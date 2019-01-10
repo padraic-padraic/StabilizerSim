@@ -11,10 +11,10 @@
 static const int RE_PHASE[8] = {1, 1, 0, -1, -1, -1, 0, 1};
 static const int IM_PHASE[8] = {0, 1, 1, 1, 0, -1, -1, -1};
 
-namespace CHSimulator 
+namespace StabilizerSimulator 
 {
 // Definitions for implementing arbitrary binary vectors and matrices as arrays of 64bit integers
-typedef uint_fast64_t uint_t;
+typedef uint_t = uint_fast64_t;
 
 #define WORD_BITS (CHAR_BIT * sizeof(uint_t))
 // Calculate which integer in the array we are looking at

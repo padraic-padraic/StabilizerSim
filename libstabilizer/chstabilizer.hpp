@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "core.hpp"
-namespace CHSimulator
+namespace StabilizerSimulator
 {
 // Clifford simulator based on the CH-form 
 class StabilizerState
