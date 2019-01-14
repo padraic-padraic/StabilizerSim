@@ -24,8 +24,6 @@ typedef uint_t = uint_fast64_t;
 
 extern const uint_t zer = 0U;
 extern const uint_t one = 1U;
-extern bool (*hamming_parity)(uint_t);
-extern unsigned (*hamming_weight)(uint_t);
 
 struct scalar_t {
   // complex numbers of the form eps * 2^{p/2} * exp(i (pi/4)*e )
@@ -117,59 +115,59 @@ void Print(std::vector<uint_t> A, unsigned n);// print a binary matrix
 #ifdef _MSC_VER
   #define INTRINSIC_PARITY 1
   #include <intrin.h>
-  inline bool _msc_parity(word x)
+  inline bool _msc_parity(uint_t x)
   {
     return (__popcnt64(x) & one);
   }
-  bool (*hamming_parity) (word) = &_msc_parity;
-  inline unsigned _msc_weight(word x)
+  bool (*hamming_parity) (uint_t) = &_msc_parity;
+  inline unsigned _msc_weight(uint_t x)
   {
     return (__popcnt64(x));
   }
-  unsigned (*hamming_weight) (word)= &_msc_weight;
+  unsigned (*hamming_weight) (uint_t)= &_msc_weight;
 #endif
 #ifdef __GNUC__
   #define INTRINSIC_PARITY 1
-  inline bool _gcc_parity(word x)
+  inline bool _gcc_parity(uint_t x)
   {
     return (__builtin_popcountll(x) & one);
   }
-  bool (*hamming_parity) (word) = &_gcc_parity;
-  inline unsigned _gcc_weight(word x)
+  bool (*hamming_parity) (uint_t) = &_gcc_parity;
+  inline unsigned _gcc_weight(uint_t x)
   {
     return (__builtin_popcountll(x));
   }
-  unsigned (*hamming_weight) (word)= &_gcc_weight;
+  unsigned (*hamming_weight) (uint_t)= &_gcc_weight;
 #endif
 #ifdef _CLANG_
   #if __has__builtin(__builtin_popcount)
   #define INTRINSIC_PARITY 1
-    inline bool _clang_parity(word x)
+    inline bool _clang_parity(uint_t x)
     {
       return (__builtin_popcountll(x) & one);
     }
-    bool (*hamming_parity) (word) = &_clang_parity;
-    inline unsigned _clang_weight(word x)
+    bool (*hamming_parity) (uint_t) = &_clang_parity;
+    inline unsigned _clang_weight(uint_t x)
     {
       return (__builtin_popcountll(x));
     }
-    unsigned (*hamming_weight) (word) = &_clang_weight;
+    unsigned (*hamming_weight) (uint_t) = &_clang_weight;
   #endif
 #endif
 #ifndef INTRINSIC_PARITY
   // Implementation from http://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetKernighan
-  bool _naive_parity(word x)
+  bool _naive_parity(uint_t x)
   {
-    word c; // c accumulates the total bits set in x
+    uint_t c; // c accumulates the total bits set in x
     for (c = 0; x; c++)
     {
       x &= (x - 1); // clear the least significant bit set
     }
     return (c&one);
   }
-  unsigned _naive_weight(word x)
+  unsigned _naive_weight(uint_t x)
   {
-    word c; // c accumulates the total bits set in x
+    uint_t c; // c accumulates the total bits set in x
     for (c = 0; x; c++)
     {
       x &= (x - 1); // clear the least significant bit set
@@ -177,8 +175,8 @@ void Print(std::vector<uint_t> A, unsigned n);// print a binary matrix
     return c;
   }
 
-  bool (*hamming_parity) (word) = &_naive_parity;
-  unsigned (*hamming_weight) (word) = &_naive_weight;
+  bool (*hamming_parity) (uint_t) = &_naive_parity;
+  unsigned (*hamming_weight) (uint_t) = &_naive_weight;
 #endif
 
 scalar_t& scalar_t::operator*=(const scalar_t& rhs)

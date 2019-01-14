@@ -75,11 +75,8 @@ private:
     scalar_t omega; //Internal phase: |phi> = omega*U_{d}*U_{c}*U_{h}|s>
 
     std::vector<uint_t> GT;
-    std::vector<uint_t> G_inverseT;
     bool isReadyGT;
-    bool isReadyG_inverseT;
     void TransposeG();
-    void TransposeG_inverse();
     //Commute a Pauli through the D, C and H layers
     void CommutePauli(pauli_t& P);
     pauli_t GetAmplitudeX(uint_t x);
@@ -96,9 +93,7 @@ M_diag1(zer),
 M_diag2(zer),
 M(n, zer),
 GT(n_qubits,zer),
-G_inverseT(n_qubits, zer),
 isReadyGT(false),
-isReadyG_inverseT(false)
 {
   // Initialize G to the identity
   for (unsigned i=0; i<n_qubits; i++)
@@ -117,9 +112,7 @@ M_diag1(rhs.M_diag1),
 M_diag2(rhs.M_diag2),
 M(rhs.M),
 GT(rhs.GT),
-G_inverseT(rhs.G_inverseT),
 isReadyGT(rhs.isReadyGT),
-isReadyG_inverseT(rhs.isReadyG_inverseT)
 {
 };
 
@@ -135,7 +128,6 @@ void DCHStabilizer::CompBasisVector(uint_t x)
     G_inverse[i] = (one << i);
   }
   isReadyGT = false;
-  isReadyG_inverseT = false;
 }
 
 void DCHStabilizer::HadamardBasisVector(uint_t x)
@@ -151,7 +143,6 @@ void DCHStabilizer::HadamardBasisVector(uint_t x)
     G_inverse[i] = (one << i);
   }
   isReadyGT = false;
-  isReadyG_inverseT = false;
 }
 
 void DCHStabilizer::S(unsigned target)
@@ -240,24 +231,6 @@ void DCHStabilizer::TransposeG()
     }
   }
   isReadyGT = true;
-}
-
-void DCHStabilizer::TransposeG_inverse()
-{
-  for (unsigned i=0; i<n; i++)
-  {
-    uint_t shift = (one << i);
-    for (unsigned j=0; j<n; j++)
-    {
-      if((G_inverse[i] >>j) & one)
-      {
-        G_inverseT[j] |= shift;
-      } else {
-        G_inverseT[j] &= ~(shift);
-      }
-    }
-  }
-  isReadyG_inverseT = true;
 }
 
 void DCHStabilizer::CommutePauli(pauli_t& p)
@@ -419,8 +392,8 @@ void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
     nu1 ^= q_shift;
   }
 
-  //
-  if (t & q_shift)
+    //Pick the string with the q-th bit equal to zero. If necessary, swap the strings.
+    if (t & q_shift)
     {
         s=u;
         omega.e=(omega.e + 2*b) % 8;
@@ -431,6 +404,8 @@ void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
     {
         s=t;
     }
+    //We know have the qth bit looks like 
+    // |0>+i^{b}|1> = S^{b}|+>
 
     // change the order of H and S gates
     // H^{a} S^{b} |+> = eta^{e1} S^{e2} H^{e3} |e4>
@@ -465,82 +440,69 @@ void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
       if (nu1)//if T2 != Identity
       {
         //Right multiply UC by T2
-        for (unsigned i=0; i<n; i++)
+        for(unsigned i=0; i<n_qubits; i++)
         {
           if((nu1 >> i) & one)
           {
-            G[q] ^= G[i];
-          }
-        }
-        if(e2)
-        {
-          uint_t rowQ = G[q];
-          // We need to commute S through and then add it to UD
-          for (unsigned i=0; i<n; i++)
-          {
+            //xor col i of G^{-1} into col q
+            G_inverse[q] ^= G_inverse[i];
             uint_t shift = (one << i);
-            if (!!(rowQ & shift))
+            for(unsigned j=0; j<n_qubits; j++)
             {
-              if (!!(M_diag1 & shift))
-              {
-                M_diag2 ^= shift;
-              }
-              M_diag1 ^= shift;
-              for (unsigned j=i+1; j<n; j++)
-              {
-                if ((rowQ >> j) & one)
-                {
-                  M[i] ^= (one << j);
-                  M[j] ^= shift;
-                }
-              }
+              //xor row q of G into row i
+              G[j] ^= ((!!(G[j] & q_shift)) * shift);
             }
           }
         }
-      } else {
-        //T2 is identity, but we still need to add S to UD
-        if (e2)
+      }
+      if(e2) // Commute the s gate through Uc 
+      {
+        uint_t y = G_inverse[q];
+        M_diag2 ^= (y & M_diag1);
+        M_diag1 ^= y;
+        for(unsigned i=0; i<n_qubitsl; i++)
         {
-          M_diag2 ^= (M_diag1 & (one << q));
-          M_diag1 ^= (one << q);
+          M[i] ^= ((y>>i)&one)*y;
         }
       }
-    } else {
-      //nu0 Not Empty
-      if (nu0)
+    }
+    else
+    {
+      if (nu0) //nu0\q Not Empty
       {
         //Commute WD through UC and add to UD
         //Setup the Z vector, pull out the y vector
-        uint_t y = G[q];
+        uint_t y = G_inverse[q];
         uint_t z = zer;
         for (unsigned j=0; j<n; j++)
         {
           if((nu1>>j) & one)
           {
-            z ^= G[j];
+            z ^= G_inverse[j];
           }
         }
-        // Diagonal elemenets M_{ii} += y_{i} = 2*z_{i}y_{i}
+        // Diagonal elemenets M_{ii} += y_{i} + 2*z_{i}y_{i}
         // 2* z_{i} = 0 if Z=0,2 or  2 if Z=1,3
         if (e2)
         {
-          M_diag1 ^= y;          
+          M_diag2 ^= (y&M_diag1);
+          M_diag1 ^= y;
         }
         M_diag2 ^= (z & y);
         // Offdiagonal elements
         for (unsigned i=0; i<n; i++)
         {
-          bool y_i = (y>>i)&one;
-          bool z_i = (z>>i)&one;
-          uint_t shift = one << i;
-          for (unsigned j=i+1; j<n; j++)
+          if((y>>i)&one)
           {
-            bool y_j = (y>>j)&one;
-            bool z_j = (z>>j)&one;
-            bool val = (e2 & (y_i & y_j));
-            val ^= ((y_i&z_j) ^ (z_i &y_j));
-            M[j] ^= val*shift;
-            M[i] ^= val*(one << j);
+            M[i] ^= z;
+            if(e2)
+            {
+              M[i] ^= y;
+            }
+          }
+          if((z>>i)&one)
+          {
+            M[i] ^= y;
           }
         }
       }
