@@ -1,14 +1,14 @@
 #ifndef DCH_STABILIZER_HPP
 #define DCH_STABILIZER_HPP
 
-#include "Core.hpp"
+#include "core.hpp"
 
 #include <algorithm>
 #include <vector>
 
 const char* dch_fnames[] = {"s", "v", "M", "M_diag", "G"};
 
-namespace StabilizerSimlator
+namespace StabilizerSimulator
 {
 
 class DCHStabilizer
@@ -28,12 +28,12 @@ public:
         return omega;
       }
 
-      uint_t M_diag1() const
+      uint_t MDiag1() const
       {
         return M_diag1;
       }
 
-      uint_t M_diaga2() const
+      uint_t MDiag2() const
       {
         return M_diag2;
       }
@@ -53,6 +53,8 @@ public:
     void S(unsigned target);
     void Sdag(unsigned target);
     void Z(unsigned target);
+    void X(unsigned target);
+    void Y(unsigned target);
     void H(unsigned target);
 
     // state preps
@@ -61,6 +63,10 @@ public:
 
     //Measurements
     scalar_t Amplitude(uint_t x);
+    void MeasurePauli(pauli_t P); // applies a gate (I+P)/2 
+                                // where P is an arbitrary Pauli operator
+    void MeasurePauliProjector(std::vector<pauli_t>& generators);
+
 
 private:
     unsigned n; //N Qubits
@@ -84,6 +90,10 @@ private:
     void UpdateSVector(uint_t t, uint_t u, unsigned b);
 };
 
+//-------------------------------//
+// Implementation                //
+//-------------------------------//
+
 DCHStabilizer::DCHStabilizer(unsigned n_qubits) :
 n(n_qubits),
 s(zer),
@@ -93,7 +103,7 @@ M_diag1(zer),
 M_diag2(zer),
 M(n, zer),
 GT(n_qubits,zer),
-isReadyGT(false),
+isReadyGT(false)
 {
   // Initialize G to the identity
   for (unsigned i=0; i<n_qubits; i++)
@@ -107,12 +117,12 @@ n(rhs.n),
 s(rhs.s),
 v(rhs.v),
 G(rhs.G),
-G_inverse(rhs.G_inverse);
+G_inverse(rhs.G_inverse),
 M_diag1(rhs.M_diag1),
 M_diag2(rhs.M_diag2),
 M(rhs.M),
 GT(rhs.GT),
-isReadyGT(rhs.isReadyGT),
+isReadyGT(rhs.isReadyGT)
 {
 };
 
@@ -155,12 +165,6 @@ void DCHStabilizer::S(unsigned target)
   M_diag1 ^= (one << target);
 }
 
-void DCHStabilizer::Z(unsigned target)
-{
-  //Add two to M_{ii}
-  M_diag2 ^= (one << target);
-}
-
 void DCHStabilizer::Sdag(unsigned target)
 {
   //Add three to M_{ii}
@@ -174,6 +178,65 @@ void DCHStabilizer::Sdag(unsigned target)
     M_diag2 ^= (one << target);
   }
   M_diag1 ^= (one << target);
+}
+
+void DCHStabilizer::Z(unsigned target)
+{
+  //Add two to M_{ii}
+  M_diag2 ^= (one << target);
+}
+
+void DCHStabilizer::X(unsigned target)
+{
+  pauli_t p;
+  p.X ^= (one << target);
+  CommutePauli(p);
+  omega.e += (hamming_parity(p.Z&s))*4;
+  omega.e += 2*(p.e);
+  omega.e = omega.e % 4;
+  s ^= p.X;
+}
+
+void DCHStabilizer::Y(unsigned target)
+{
+  Z(target);
+  X(target);
+  omega.e = (omega.e + 2) % 8;
+}
+
+void DCHStabilizer::H(unsigned target)
+{
+  // Represent H_{a} = \frac{1}{2}\left(X_{a} + Z_{a}\right)
+  pauli_t p, q;
+  p.X ^= (one << target);
+  q.Z ^= (one << target);
+  CommutePauli(p);
+  CommutePauli(q);
+  uint_t t = s^p.X;
+  unsigned t_phase = hamming_parity(s&p.Z) * 2U;
+  t_phase += p.e;
+  t_phase = t_phase % 4;
+  uint_t u = s^q.X;
+  unsigned u_phase = hamming_parity(s&q.Z)*2U;
+  u_phase += q.e;
+  u_phase = u_phase % 4;
+  unsigned b = u_phase - t_phase;
+  b = b%4;
+  if (b<0)
+  {
+    b += 4;
+  }
+  omega.e += 2*t_phase;
+  omega.e = omega.e % 8;
+  if(t==u)
+  {
+    s = t;
+    //TODO: Check phases!
+  }
+  else
+  {
+    UpdateSVector(t, u, b);
+  }
 }
 
 void DCHStabilizer::CZ(unsigned control, unsigned target)
@@ -214,6 +277,32 @@ void DCHStabilizer::CX(unsigned control, unsigned target)
   // Update the target column of G
   G[target] ^= G[control];
 }
+
+void DCHStabilizer::MeasurePauli(pauli_t P)
+{
+  CommutePauli(P);
+  unsigned b = P.e;
+  uint_t u = s^P.X;
+  b += hamming_parity(s&P.Z) * 2;
+  b = b%4;
+  UpdateSVector(s, u, b);
+}
+
+void DCHStabilizer::MeasurePauliProjector(std::vector<pauli_t>& generators)
+{
+  for (uint_t i=0; i<generators.size(); i++)
+  {
+      this->MeasurePauli(generators[i]);
+      if (omega.eps == 0)
+      {
+          break;
+      }
+  }
+}
+
+//----------------------------------//
+// Implementation - private methods //
+//----------------------------------//
 
 void DCHStabilizer::TransposeG()
 {
