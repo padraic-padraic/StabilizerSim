@@ -99,6 +99,7 @@ n(n_qubits),
 s(zer),
 v(zer),
 G(n_qubits,zer),
+G_inverse(n_qubits, zer),
 M_diag1(zer),
 M_diag2(zer),
 M(n, zer),
@@ -109,6 +110,7 @@ isReadyGT(false)
   for (unsigned i=0; i<n_qubits; i++)
   {
     G[i] |= (one << i);
+    G_inverse[i] |= (one << i);
   }
 };
 
@@ -251,7 +253,7 @@ void DCHStabilizer::CX(unsigned control, unsigned target)
   isReadyGT = false;
   uint_t target_col = M[target];
   uint_t shift = (one << control);
-  //Update the con
+  //Update the control col of M
   M[control] ^= target_col;
   for (unsigned i=0; i<n; i++)
   {
@@ -272,10 +274,35 @@ void DCHStabilizer::CX(unsigned control, unsigned target)
     M_diag2 ^= shift;
   }
   M_diag1 ^= diagonal_target_bit * shift;
-  M[control] ^= diagonal_target_bit * shift;
   M_diag2 ^= ((M_diag2 >> target) & one) * shift;
   // Update the target column of G
   G[target] ^= G[control];
+}
+
+scalar_t DCHStabilizer::Amplitude(uint_t x)
+{
+  scalar_t amp;
+  if(omega.eps == 0)
+  {
+    amp.eps = 0;
+    return amp;
+  }
+  amp.p = -1 * ((int) hamming_weight(v));
+  pauli_t p = GetAmplitudeX(x);
+  amp.e = 2*p.e;
+  if (!!((p.X ^ s) & ~v))
+  {
+    amp.eps = 0;
+    return amp;
+  }
+  if (hamming_parity(p.X&s&v))
+  {
+    amp.e += 4;
+    amp.e = (amp.e%8);
+  }
+  amp.conjugate();
+  amp *= omega;
+  return amp;
 }
 
 void DCHStabilizer::MeasurePauli(pauli_t P)
@@ -326,10 +353,14 @@ void DCHStabilizer::CommutePauli(pauli_t& p)
 {
   uint_t x_temp = zer;
   uint_t z_temp = zer;
-  char phase = hamming_weight(p.X&M_diag1) + 2*hamming_weight(p.X&M_diag2);
+  unsigned phase = hamming_weight(p.X&M_diag1) + 2*hamming_weight(p.X&M_diag2);
   for (unsigned i=0; i<n; i++)
   {
     p.Z ^= (one << i) * hamming_parity(p.X&M[i]);
+    if((p.X>>i)& one)
+    {
+      phase += 2*hamming_parity(p.X&M[i]);
+    }
   }
   //Shift phase to mod 8
   phase = (phase % 4) *2;
@@ -345,30 +376,34 @@ void DCHStabilizer::CommutePauli(pauli_t& p)
     uint_t shift = (one << i);
     if (!!(p.Z&shift))
     {
-      ztemp ^= G[i];
+      z_temp ^= G[i];
     }
-    xtemp ^= shift * (hamming_weight(p.X&G_inverse[i]) & one);
+    x_temp ^= shift * hamming_parity(p.X&G_inverse[i]);
   }
   //Commute through H
-  p.X = (ztemp & v) ^ (xtemp & ~v);
-  p.Z = (xtemp & v) ^ (ztemp & ~v);
+  p.X = (z_temp & v) ^ (x_temp & ~v);
+  p.Z = (x_temp & v) ^ (z_temp & ~v);
 }
 
 pauli_t DCHStabilizer::GetAmplitudeX(uint_t x) {
   pauli_t p;
   p.X = x;
-  char phase = hamming_weight(p.x&M_diag1) + 2*hamming_weight(p.x&M_diag2);
+  unsigned phase = hamming_weight(p.X&M_diag1) + 2*hamming_weight(p.X&M_diag2);
   for (unsigned i=0; i<n; i++)
   {
     p.Z ^= (one << i) * hamming_parity(p.X&M[i]);
+    if((x>>i)& one)
+    {
+      phase += 2*hamming_parity(x&M[i]);
+    }
   }
   //Shift phase to mod 8
-  phase = (phase % 4) *2;
+  phase = (phase % 4);
   p.e -= phase;
-  p.e = p.e % 8;
+  p.e = p.e % 4;
   if (p.e < 0)
   {
-    p.e += 8;
+    p.e += 4;
   }
   //Commute through C:
   uint_t x_temp = zer;
@@ -378,39 +413,13 @@ pauli_t DCHStabilizer::GetAmplitudeX(uint_t x) {
     uint_t shift = (one << i);
     if (!!(p.Z&shift))
     {
-      ztemp ^= G[i];
+      z_temp ^= G[i];
     }
-    xtemp ^= shift * (hamming_weight(p.X&G_inverse[i]) & one);
+    x_temp ^= shift * hamming_parity(p.X & G_inverse[i]);
   }
   p.X = x_temp;
   p.Z = z_temp;
   return p;
-}
-
-scalar_t DCHStabilizer::Amplitude(uint_t x)
-{
-  scalar_t amp;
-  if(omega.eps == 0)
-  {
-    amp.eps = 0;
-    return amp;
-  }
-  amp.p = -1 * ((int) hamming_weight(v));
-  pauli_t p = GetAmplitudeX(x);
-  amp.e = 2*p.e;
-  if (!!((p.X ^ s) & ~v))
-  {
-    amp.eps = 0;
-    return amp;
-  }
-  if (hamming_parity(p.X&s&v))
-  {
-    amp.e += 4;
-    amp.e = (amp.e%8);
-  }
-  amp.conjugate();
-  amp *= omega;
-  return amp;
 }
 
 void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
@@ -436,7 +445,7 @@ void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
         omega.e = (omega.e +  7) % 8;
         return;
       default:
-        assert(0);
+        throw std::logic_error("Invalid phase factor found b:" + std::to_string(b) + ".\n");
     }
   }
   uint_t nu0 = (t^u) & (~v);
@@ -463,7 +472,6 @@ void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
       }
     }
     //
-    assert((nu0 & q_shift)>0);
     nu0 ^= q_shift;
   } else {
     //nu0 is empty
@@ -477,7 +485,6 @@ void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
         break;
       }
     }
-    assert((nu1 & q_shift)>0);
     nu1 ^= q_shift;
   }
 
@@ -487,7 +494,10 @@ void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
         s=u;
         omega.e=(omega.e + 2*b) % 8;
         b=(4-b) % 4;
-        assert(!(u & q_shift));
+        if(!(u & q_shift))
+        {
+          throw std::logic_error("t and u strings do not differ.");
+        }
     }
     else
     {
@@ -529,14 +539,14 @@ void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
       if (nu1)//if T2 != Identity
       {
         //Right multiply UC by T2
-        for(unsigned i=0; i<n_qubits; i++)
+        for(unsigned i=0; i<n; i++)
         {
           if((nu1 >> i) & one)
           {
             //xor col i of G^{-1} into col q
             G_inverse[q] ^= G_inverse[i];
             uint_t shift = (one << i);
-            for(unsigned j=0; j<n_qubits; j++)
+            for(unsigned j=0; j<n; j++)
             {
               //xor row q of G into row i
               G[j] ^= ((!!(G[j] & q_shift)) * shift);
@@ -549,7 +559,7 @@ void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
         uint_t y = G_inverse[q];
         M_diag2 ^= (y & M_diag1);
         M_diag1 ^= y;
-        for(unsigned i=0; i<n_qubitsl; i++)
+        for(unsigned i=0; i<n; i++)
         {
           M[i] ^= ((y>>i)&one)*y;
         }
