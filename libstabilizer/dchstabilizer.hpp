@@ -243,13 +243,20 @@ void DCHStabilizer::H(unsigned target)
 
 void DCHStabilizer::CZ(unsigned control, unsigned target)
 {
+  if(control == target)
+  {
+    throw std::logic_error("Controlled operation cannot target the same qubit.");
+  }
   M[target] ^= (one << control);
   M[control] ^= (one << target);
 }
 
 void DCHStabilizer::CX(unsigned control, unsigned target)
 {
-
+  if(control == target)
+  {
+    throw std::logic_error("Controlled operation cannot target the same qubit.");
+  }
   isReadyGT = false;
   uint_t target_col = M[target];
   uint_t shift = (one << control);
@@ -269,7 +276,7 @@ void DCHStabilizer::CX(unsigned control, unsigned target)
   }
   // M_{c,c} += M_{t,t};
   uint_t diagonal_target_bit = ((M_diag1 >> target) & one);
-  if ((M_diag1 >> control) & diagonal_target_bit)
+  if ((M_diag1 >> control) &  diagonal_target_bit)
   {
     M_diag2 ^= shift;
   }
@@ -494,7 +501,7 @@ void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
         s=u;
         omega.e=(omega.e + 2*b) % 8;
         b=(4-b) % 4;
-        if(!(u & q_shift))
+        if(!!(u & q_shift))
         {
           throw std::logic_error("t and u strings do not differ.");
         }

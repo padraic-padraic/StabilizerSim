@@ -344,6 +344,12 @@ void StabilizerState::Y(unsigned q)
 
 void StabilizerState::RightCX(unsigned q, unsigned r)
 {
+  if(q == r)
+  {
+    throw std::logic_error("Controlled operation cannot target the same qubit.");
+  }
+  isReadyMT = false;
+  isReadyFT = false;
   G[q]^=G[r];
   F[r]^=F[q];
   M[q]^=M[r];
@@ -351,6 +357,10 @@ void StabilizerState::RightCX(unsigned q, unsigned r)
 
 void StabilizerState::CX(unsigned q, unsigned r)
 {
+  if(q == r)
+  {
+    throw std::logic_error("Controlled operation cannot target the same qubit.");
+  }
   isReadyMT=false;// we are going to change M and F
   isReadyFT=false;
   uint_t C=(one<<q);
@@ -374,6 +384,10 @@ void StabilizerState::CX(unsigned q, unsigned r)
 
 void StabilizerState::RightCZ(unsigned q, unsigned r)
 {
+  if(q == r)
+  {
+    throw std::logic_error("Controlled operation cannot target the same qubit.");
+  }
   isReadyMT=false;// we are going to change M
   M[q]^=F[r];
   M[r]^=F[q];
@@ -382,6 +396,10 @@ void StabilizerState::RightCZ(unsigned q, unsigned r)
 
 void StabilizerState::CZ(unsigned q, unsigned r)
 {
+  if(q == r)
+  {
+    throw std::logic_error("Controlled operation cannot target the same qubit.");
+  }
   isReadyMT=false;// we are going to change M
   uint_t C=(one<<q);
   uint_t T=(one<<r);
