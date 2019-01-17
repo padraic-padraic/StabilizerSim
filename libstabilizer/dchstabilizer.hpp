@@ -195,7 +195,7 @@ void DCHStabilizer::X(unsigned target)
   CommutePauli(p);
   omega.e += (hamming_parity(p.Z&s))*4;
   omega.e += 2*(p.e);
-  omega.e = omega.e % 4;
+  omega.e = omega.e % 8;
   s ^= p.X;
 }
 
@@ -369,14 +369,9 @@ void DCHStabilizer::CommutePauli(pauli_t& p)
       phase += 2*hamming_parity(p.X&M[i]);
     }
   }
-  //Shift phase to mod 8
-  phase = (phase % 4) *2;
-  p.e -= phase;
-  p.e = p.e % 8;
-  if (p.e < 0)
-  {
-    p.e += 8;
-  }
+  phase = (phase % 4);
+  phase = (4 - phase) %8;
+  p.e = phase;
   //Commute through C:
   for (unsigned i=0; i<n; i++)
   {

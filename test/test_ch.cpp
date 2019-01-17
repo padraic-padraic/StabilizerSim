@@ -38,6 +38,9 @@ bool check_states(StabilizerState &ch, DCHStabilizer &dch)
         dch_amp = amp.to_complex();
         if(!complex_close(ch_amp, dch_amp))
         {
+            std::cout << ch_amp << " != " << dch_amp << " for string ";
+            Print(i, n);
+            std::cout << std::endl;
             return false;
         }
     }
@@ -91,6 +94,21 @@ TEST_CASE("Test Z phases")
             dch.Z(i);
             REQUIRE(check_states(ch, dch));
         }
+    }
+}
+
+TEST_CASE("Test Pauli Y")
+{
+    unsigned n_qubits = 10;
+    StabilizerState ch(n_qubits);
+    DCHStabilizer dch(n_qubits);
+    for(unsigned i=0; i<20; i++)
+    {
+        unsigned target = (rand() % 10);
+        INFO("Target is " << target);
+        ch.Y(target);
+        dch.Y(target);
+        REQUIRE(check_states(ch, dch));
     }
 }
 
