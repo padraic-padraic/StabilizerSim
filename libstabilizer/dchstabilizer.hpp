@@ -67,6 +67,9 @@ public:
                                 // where P is an arbitrary Pauli operator
     void MeasurePauliProjector(std::vector<pauli_t>& generators);
 
+    #ifdef CATCH_VERSION_MAJOR //Helper 
+    void test_commute_pauli();
+    #endif
 
 private:
     unsigned n; //N Qubits
@@ -84,8 +87,8 @@ private:
     bool isReadyGT;
     void TransposeG();
     //Commute a Pauli through the D, C and H layers
-    void CommutePauli(pauli_t& P);
-    pauli_t GetAmplitudeX(uint_t x);
+    void CommutePauliDC(pauli_t &P);
+    void CommutePauli(pauli_t &P);
     //Update used for Hadamards and Measurement
     void UpdateSVector(uint_t t, uint_t u, unsigned b);
 };
@@ -219,21 +222,43 @@ void DCHStabilizer::H(unsigned target)
   t_phase += p.e;
   t_phase = t_phase % 4;
   uint_t u = s^q.X;
-  unsigned u_phase = hamming_parity(s&q.Z)*2U;
-  u_phase += q.e;
-  u_phase = u_phase % 4;
-  unsigned b = u_phase - t_phase;
-  b = b%4;
-  if (b<0)
+  unsigned u_phase = hamming_parity(s&q.Z) * 2U;
+  unsigned b, global;
+  if (u_phase>t_phase)
   {
-    b += 4;
+    b = u_phase - t_phase;
+    global = 2*t_phase;
   }
-  omega.e += 2*t_phase;
-  omega.e = omega.e % 8;
+  else if (u_phase < t_phase)
+  {
+    uint_t scratch = t;
+    t = u;
+    u = scratch;
+    b = u_phase - t_phase;
+    global = 2*u_phase;
+  }
+  else
+  {
+    b = 0;
+    global = t_phase;
+  }
+  omega.e = (omega.e + 2*global) %8;
+  b = b%4;
   if(t==u)
   {
     s = t;
-    //TODO: Check phases!
+    if(!((b==1) || (b==3))) // otherwise the state is not normalized
+    {
+      throw std::logic_error("State is not properly normalised, b should be 1 or 3.\n");
+    }
+    if (b==1)
+    {
+        omega.e=(omega.e + 1) % 8;
+    }
+    else
+    {
+        omega.e=(omega.e + 7) % 8;
+    }
   }
   else
   {
@@ -295,7 +320,9 @@ scalar_t DCHStabilizer::Amplitude(uint_t x)
     return amp;
   }
   amp.p = -1 * ((int) hamming_weight(v));
-  pauli_t p = GetAmplitudeX(x);
+  pauli_t p;
+  p.X = x;
+  CommutePauliDC(p);
   amp.e = 2*p.e;
   if (!!((p.X ^ s) & ~v))
   {
@@ -356,57 +383,22 @@ void DCHStabilizer::TransposeG()
   isReadyGT = true;
 }
 
-void DCHStabilizer::CommutePauli(pauli_t& p)
+void DCHStabilizer::CommutePauliDC(pauli_t &p)
 {
-  uint_t x_temp = zer;
-  uint_t z_temp = zer;
   unsigned phase = hamming_weight(p.X&M_diag1) + 2*hamming_weight(p.X&M_diag2);
+  uint_t offdiag_terms = zer;
   for (unsigned i=0; i<n; i++)
   {
     p.Z ^= (one << i) * hamming_parity(p.X&M[i]);
     if((p.X>>i)& one)
     {
-      phase += 2*hamming_parity(p.X&M[i]);
+      offdiag_terms += hamming_weight(p.X&M[i]);
     }
   }
+  phase += ((offdiag_terms >> 1) & one) * 2U;
   phase = (phase % 4);
-  phase = (4 - phase) %8;
+  phase = (4-phase) %4;
   p.e = phase;
-  //Commute through C:
-  for (unsigned i=0; i<n; i++)
-  {
-    uint_t shift = (one << i);
-    if (!!(p.Z&shift))
-    {
-      z_temp ^= G[i];
-    }
-    x_temp ^= shift * hamming_parity(p.X&G_inverse[i]);
-  }
-  //Commute through H
-  p.X = (z_temp & v) ^ (x_temp & ~v);
-  p.Z = (x_temp & v) ^ (z_temp & ~v);
-}
-
-pauli_t DCHStabilizer::GetAmplitudeX(uint_t x) {
-  pauli_t p;
-  p.X = x;
-  unsigned phase = hamming_weight(p.X&M_diag1) + 2*hamming_weight(p.X&M_diag2);
-  for (unsigned i=0; i<n; i++)
-  {
-    p.Z ^= (one << i) * hamming_parity(p.X&M[i]);
-    if((x>>i)& one)
-    {
-      phase += 2*hamming_parity(x&M[i]);
-    }
-  }
-  //Shift phase to mod 8
-  phase = (phase % 4);
-  p.e -= phase;
-  p.e = p.e % 4;
-  if (p.e < 0)
-  {
-    p.e += 4;
-  }
   //Commute through C:
   uint_t x_temp = zer;
   uint_t z_temp = zer;
@@ -421,7 +413,16 @@ pauli_t DCHStabilizer::GetAmplitudeX(uint_t x) {
   }
   p.X = x_temp;
   p.Z = z_temp;
-  return p;
+}
+
+void DCHStabilizer::CommutePauli(pauli_t& p)
+{
+  CommutePauliDC(p);
+  uint_t x_temp = p.X;
+  uint_t z_temp = p.Z;
+  //Commute through H
+  p.X = (z_temp & v) ^ (x_temp & ~v);
+  p.Z = (x_temp & v) ^ (z_temp & ~v);
 }
 
 void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
@@ -504,6 +505,7 @@ void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
     else
     {
         s=t;
+
     }
     //We know have the qth bit looks like 
     // |0>+i^{b}|1> = S^{b}|+>

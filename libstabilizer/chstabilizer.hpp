@@ -701,7 +701,7 @@ void StabilizerState::UpdateSvector(uint_t t, uint_t u, unsigned b)
         b=(4-b) % 4;
         if(!!(u & qpos))
         {
-
+          throw std::logic_error("T and U strings should differ.");
         }
     }
     else

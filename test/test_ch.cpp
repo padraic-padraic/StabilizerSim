@@ -1,14 +1,15 @@
+#define CATCH_CONFIG_RUNNER
+#include "test/lib/catch.hpp"
+
 #include "libstabilizer/core.hpp"
 #include "libstabilizer/chstabilizer.hpp"
 #include "libstabilizer/dchstabilizer.hpp"
-
-#define CATCH_CONFIG_RUNNER
-#include "test/lib/catch.hpp"
 
 #include <algorithm>
 #include <cstdlib>
 #include <complex>
 #include <iostream>
+#include <string>
 #include <time.h>
 #include <vector>
 
@@ -16,13 +17,17 @@ using namespace StabilizerSimulator;
 
 using complex_t = std::complex<double>;
 
+
+//--------------------------------//
+// Helper methods                 //
+//--------------------------------//
+
 const double precision=1e-8;
 
 bool complex_close(complex_t &a, complex_t &b)
 {
     return( (std::abs(a.real()-b.real())<1e-8) & (std::abs(a.imag()-b.imag())<1e-8) );
 }
-
 
 bool check_states(StabilizerState &ch, DCHStabilizer &dch)
 {
@@ -45,6 +50,145 @@ bool check_states(StabilizerState &ch, DCHStabilizer &dch)
         }
     }
     return true;
+}
+
+//--------------------------------//
+// Generate random circuits       //
+//--------------------------------//
+
+enum class Gate {
+    X, Y, Z, H, S, Sdag, CZ, CX
+};
+
+std::map<Gate, std::string> gate_names( 
+{
+    {Gate::X, "X"},
+    {Gate::Y, "Y"},
+    {Gate::Z, "Z"},
+    {Gate::H, "H"},
+    {Gate::S, "S"},
+    {Gate::Sdag, "Sdag"},
+    {Gate::CZ, "CZ"},
+    {Gate::CX, "CX"}
+});
+
+template<class T> void apply_gate(T &state, Gate g, unsigned control, unsigned target)
+{
+    switch (g)
+    {
+        case Gate::X:
+            state.X(control);
+            break;
+        case Gate::Y:
+            state.Y(control);
+            break;
+        case Gate::Z:
+            state.Z(control);
+            break;
+        case Gate::H:
+            state.H(control);
+            break;
+        case Gate::S:
+            state.S(control);
+            break;
+        case Gate::Sdag:
+            state.Sdag(control);
+            break;
+        case Gate::CZ:
+            state.CZ(control, target);
+            break;
+        case Gate::CX:
+            state.CX(control, target);
+            break;
+        default:
+            throw std::logic_error("Wat");
+            break;
+    }
+}
+
+template<class T> std::string random_circuit(T &state, std::vector<Gate> &gates, unsigned n_gates=25)
+{
+    unsigned n_qubits = state.NQubits();
+    std::string gate_seq = "";
+    for(unsigned i=0; i<n_gates; i++)
+    {
+        unsigned control = (rand()%n_qubits);
+        unsigned target = (rand()%n_qubits);
+        if(target == control)
+        {
+            target = (target +1)%n_qubits;
+        }
+        unsigned gate_index = (rand()%gates.size());
+        Gate g = gates[gate_index];
+        apply_gate(state, g, control, target);
+        auto gate_str = gate_names[g];
+        gate_str += "(" + std::to_string(control);
+        if (g==Gate::CZ || g==Gate::CX)
+        {
+            gate_str+= "," + std::to_string(target);
+        }
+        gate_str+=")";
+        gate_seq += gate_str;
+    }
+    return gate_seq;
+}
+
+void random_circuit_verify(StabilizerState &state1,  DCHStabilizer &state2, std::vector<Gate> &gates, unsigned n_gates=25)
+{
+    REQUIRE(state1.NQubits() == state2.NQubits());
+    unsigned n_qubits = state1.NQubits();
+    std::string gate_seq = "";
+    for(unsigned i=0; i<n_gates; i++)
+    {
+        std::string gate_seq;
+        unsigned control = (rand()%n_qubits);
+        unsigned target = (rand()%n_qubits);
+        if(target == control)
+        {
+            target = (target +1)%n_qubits;
+        }
+        unsigned gate_index = (rand()%gates.size());
+        Gate g = gates[gate_index];
+        apply_gate(state1, g, control, target);
+        apply_gate(state2, g, control, target);
+        auto gate_str = gate_names[g];
+        gate_str += "(" + std::to_string(control);
+        if (g==Gate::CZ || g==Gate::CX)
+        {
+            gate_str+= "," + std::to_string(target);
+        }
+        gate_str+=")";
+        gate_seq += gate_str;
+        INFO("Gates: " << gate_seq);
+        REQUIRE(check_states(state1, state2));
+    }
+}
+
+//--------------------------------//
+// Circuit types                  //
+//--------------------------------//
+
+std::vector<Gate> phase_gates = {Gate::S, Gate::Sdag, Gate::Z, Gate::CZ};
+std::vector<Gate> pauli_gates = {Gate::X, Gate::Y, Gate::Z};
+
+void DCHStabilizer::test_commute_pauli()
+{
+    uint_t x_string = zer, z_string = zer;
+    for(unsigned i=0; i<n; i++)
+    {
+        if(rand()%2)
+        {
+            x_string ^= (one << i);
+        }
+        if(rand()%2)
+        {
+            z_string ^= (one << i);
+        }
+    }
+    pauli_t z_only;
+    z_only.Z = z_string;
+    CommutePauli(z_only);
+    REQUIRE(z_only.X == zer);
 }
 
 TEST_CASE("Test initialisation and Amplitude")
@@ -71,44 +215,66 @@ TEST_CASE("Test Computational state initialisation")
     REQUIRE(check_states(ch, dch));
 }
 
-TEST_CASE("Test Z phases")
+TEST_CASE("Test Pauli Gates")
 {
-    unsigned n_qubits = 10;
-    StabilizerState ch(n_qubits);
-    DCHStabilizer dch(n_qubits);
-    uint_t x = zer;
-    for(unsigned i=0; i<n_qubits; i++)
+
+    SECTION("Test Z phases")
     {
-        if (rand()%2)
+        unsigned n_qubits = 10;
+        StabilizerState ch(n_qubits);
+        DCHStabilizer dch(n_qubits);
+        uint_t x = zer;
+        for(unsigned i=0; i<n_qubits; i++)
         {
-            ch.X(i);
-            dch.X(i);
-            x ^= (one << i);
+            if (rand()%2)
+            {
+                ch.X(i);
+                dch.X(i);
+                x ^= (one << i);
+            }
+        }
+        for(uint_t i=0; i<n_qubits; i++)
+        {
+            if((x>>i)&one)
+            {
+                ch.Z(i);
+                dch.Z(i);
+                REQUIRE(check_states(ch, dch));
+            }
         }
     }
-    for(uint_t i=0; i<n_qubits; i++)
+
+    SECTION("Test Pauli Y")
     {
-        if((x>>i)&one)
+        unsigned n_qubits = 10;
+        StabilizerState ch(n_qubits);
+        DCHStabilizer dch(n_qubits);
+        for(unsigned i=0; i<20; i++)
         {
-            ch.Z(i);
-            dch.Z(i);
+            unsigned target = (rand() % 10);
+            INFO("Target is " << target);
+            ch.Y(target);
+            dch.Y(target);
             REQUIRE(check_states(ch, dch));
         }
     }
-}
 
-TEST_CASE("Test Pauli Y")
-{
-    unsigned n_qubits = 10;
-    StabilizerState ch(n_qubits);
-    DCHStabilizer dch(n_qubits);
-    for(unsigned i=0; i<20; i++)
+    SECTION("Random Pauli Circuit")
     {
-        unsigned target = (rand() % 10);
-        INFO("Target is " << target);
-        ch.Y(target);
-        dch.Y(target);
-        REQUIRE(check_states(ch, dch));
+        unsigned n_qubits = 10;
+        StabilizerState ch(n_qubits);
+        DCHStabilizer dch(n_qubits);
+        uint_t x_init = zer;
+        for(unsigned i=0; i<n_qubits; i++)
+        {
+            if(rand() %2)
+            {
+                x_init ^= (one << i);
+            }
+        }
+        ch.CompBasisVector(x_init);
+        dch.CompBasisVector(x_init);
+        random_circuit_verify(ch, dch, pauli_gates);
     }
 }
 
@@ -164,6 +330,33 @@ TEST_CASE("Test CZ gate")
     ch.X(target);
     dch.X(target);
     REQUIRE(check_states(ch, dch));
+}
+
+TEST_CASE("Test Commute Pauli")
+{
+    unsigned n_qubits = 10;
+    DCHStabilizer dch(n_qubits);
+    std::string gate_seq = random_circuit(dch, phase_gates, 10);
+    INFO("GATES WERE: " << gate_seq);
+    dch.test_commute_pauli();
+}
+
+TEST_CASE("Random Phase Circuit")
+{
+    unsigned n_qubits = 10;
+    StabilizerState ch(n_qubits);
+    DCHStabilizer dch(n_qubits);
+    uint_t x_init = zer;
+    for(unsigned i=0; i<n_qubits; i++)
+    {
+        if(rand()%2)
+        {
+            x_init ^= (one << i);
+        }
+    }
+    ch.CompBasisVector(x_init);
+    dch.CompBasisVector(x_init);
+    random_circuit_verify(ch, dch, phase_gates);
 }
 
 TEST_CASE("Test CX gate")
