@@ -140,7 +140,6 @@ void random_circuit_verify(StabilizerState &state1,  DCHStabilizer &state2, std:
     std::string gate_seq = "";
     for(unsigned i=0; i<n_gates; i++)
     {
-        std::string gate_seq;
         unsigned control = (rand()%n_qubits);
         unsigned target = (rand()%n_qubits);
         if(target == control)
@@ -170,6 +169,11 @@ void random_circuit_verify(StabilizerState &state1,  DCHStabilizer &state2, std:
 
 std::vector<Gate> phase_gates = {Gate::S, Gate::Sdag, Gate::Z, Gate::CZ};
 std::vector<Gate> pauli_gates = {Gate::X, Gate::Y, Gate::Z};
+std::vector<Gate> deterministic_gates = {Gate::Z, Gate::CZ, Gate::CX, Gate::S, Gate::Sdag};
+
+//--------------------------------//
+// Tests                          //
+//--------------------------------//
 
 void DCHStabilizer::test_commute_pauli()
 {
@@ -202,17 +206,36 @@ TEST_CASE("Test initialisation and Amplitude")
 TEST_CASE("Test Computational state initialisation")
 {
     unsigned n_qubits = 10;
-    StabilizerState ch(n_qubits);
-    DCHStabilizer dch(n_qubits);
-    for(unsigned i=0; i<10; i++)
+    SECTION("With X Gates")
     {
-        if (rand()%2)
+        StabilizerState ch(n_qubits);
+        DCHStabilizer dch(n_qubits);
+        for(unsigned i=0; i<10; i++)
         {
-            ch.X(i);
-            dch.X(i);
+            if (rand()%2)
+            {
+                ch.X(i);
+                dch.X(i);
+            }
         }
+        REQUIRE(check_states(ch, dch));
     }
-    REQUIRE(check_states(ch, dch));
+    SECTION("With CompBasisVector")
+    {
+        StabilizerState ch(n_qubits);
+        DCHStabilizer dch(n_qubits);
+        uint_t x_init = zer;
+        for(unsigned i=0; i<10; i++)
+        {
+            if (rand()%2)
+            {
+                x_init ^= one << i;
+            }
+        }
+        ch.CompBasisVector(x_init);
+        dch.CompBasisVector(x_init);
+        REQUIRE(check_states(ch, dch));
+    }
 }
 
 TEST_CASE("Test Pauli Gates")
@@ -359,6 +382,31 @@ TEST_CASE("Random Phase Circuit")
     random_circuit_verify(ch, dch, phase_gates);
 }
 
+TEST_CASE("Random Deterministic Circuit")
+{
+    unsigned n_qubits = 10;
+    StabilizerState ch(n_qubits);
+    DCHStabilizer dch(n_qubits);
+    uint_t x_init = zer;
+    std::string x_str = "";
+    for(unsigned i=0; i<n_qubits; i++)
+    {
+        if(rand()%2)
+        {
+            x_init ^= (one << i);
+            x_str += "1";
+        }
+        else
+        {
+            x_str += "0";
+        }
+    }
+    CAPTURE(x_str);
+    ch.CompBasisVector(x_init);
+    dch.CompBasisVector(x_init);
+    random_circuit_verify(ch, dch, deterministic_gates);
+}
+
 TEST_CASE("Test CX gate")
 {
     unsigned n_qubits = 10;
@@ -389,43 +437,95 @@ TEST_CASE("Test CX gate")
         dch.CX(8, control);
         REQUIRE(check_states(ch, dch));
     }
-    SECTION("Check phases")
-    {
-        StabilizerState ch(n_qubits);
-        DCHStabilizer dch(n_qubits);
-        unsigned target = (rand()%7)+2;
-        INFO("Target was " << target);
-        ch.S(target);
-        dch.S(target);
-        ch.CZ(1, target);
-        dch.CZ(1, target);
-        ch.CX(1, target);
-        dch.CX(1, target);
-        dch.CX(0, target);
-        REQUIRE(check_states(ch, dch));
-        std::vector<uint_t> M = dch.MMatrix();
-        uint_t M_diag1 = dch.MDiag1();
-        uint_t M_diag2 = dch.MDiag2();
-        unsigned control_phase = ((M_diag1 >> 1) & one) + 2 * ((M_diag2 >> 1) & one);
-        REQUIRE(control_phase == 3);
-        REQUIRE(!!(M[0] & (one << 1)));
-        REQUIRE(!!(M_diag1 & one));
-    }
+    // SECTION("Check phases")
+    // {
+    //     StabilizerState ch(n_qubits);
+    //     DCHStabilizer dch(n_qubits);
+    //     unsigned target = (rand()%7)+2;
+    //     INFO("Target was " << target);
+    //     ch.S(target);
+    //     dch.S(target);
+    //     ch.CZ(1, target);
+    //     dch.CZ(1, target);
+    //     ch.CX(1, target);
+    //     dch.CX(1, target);
+    //     dch.CX(0, target);
+    //     REQUIRE(check_states(ch, dch));
+    //     std::vector<uint_t> M = dch.MMatrix();
+    //     uint_t M_diag1 = dch.MDiag1();
+    //     uint_t M_diag2 = dch.MDiag2();
+    //     unsigned control_phase = ((M_diag1 >> 1) & one) + 2 * ((M_diag2 >> 1) & one);
+    //     REQUIRE(control_phase == 3);
+    //     REQUIRE(!!(M[0] & (one << 1)));
+    //     REQUIRE(!!(M_diag1 & one));
+    // }
+}
+
+// TEST_CASE("JUST CX CIRCUIT")
+// {
+//     unsigned n_qubits = 10;
+//     StabilizerState ch(n_qubits);
+//     DCHStabilizer dch(n_qubits);
+//     uint_t x_init = zer;
+//     for(unsigned i=0; i<n_qubits; i++)
+//     {
+//         if(rand()%2)
+//         {
+//             x_init ^= (one << i);
+//         }
+//     }
+//     ch.CompBasisVector(x_init);
+//     dch.CompBasisVector(x_init);
+//     std::vector<Gate> gs = {Gate::CX, Gate::X, Gate::Y, Gate::Z};
+//     random_circuit_verify(ch, dch, gs);
+// }
+
+TEST_CASE("Simplified CX bug")
+{
+    unsigned n_qubits = 10;
+    StabilizerState ch(n_qubits);
+    DCHStabilizer dch(n_qubits);
+    uint_t x_init = zer;
+    x_init ^= one;
+    x_init ^= (one << 9);
+    ch.CompBasisVector(x_init);
+    dch.CompBasisVector(x_init);
+    ch.S(9);
+    dch.S(9);
+    ch.Sdag(2);
+    dch.Sdag(2);
+    ch.CX(9,2);
+    dch.CX(9,2);
+    REQUIRE(check_states(ch, dch));
 }
 
 TEST_CASE("Test Hadamard Gates")
 {
     unsigned n_qubits = 10;
-    StabilizerState ch(n_qubits);
-    DCHStabilizer dch(n_qubits);
-    ch.H(0);
-    dch.H(0);
-    REQUIRE(check_states(ch, dch));
+    SECTION("Plus state")
+    {
+        StabilizerState ch(n_qubits);
+        DCHStabilizer dch(n_qubits);
+        ch.H(0);
+        dch.H(0);
+        REQUIRE(check_states(ch, dch));
+    }
+    SECTION("Minus state")
+    {
+        StabilizerState ch(n_qubits);
+        DCHStabilizer dch(n_qubits);
+        ch.X(0);
+        dch.X(0);
+        ch.H(0);
+        dch.H(0);
+        REQUIRE(check_states(ch, dch));
+    }
 }
 
 int main( int argc, char* argv[] ) {
   time_t t;
-  unsigned seed = (unsigned) time(&t);
+  // unsigned seed = (unsigned) time(&t);
+  unsigned seed = 1547837414;
   std::cout << "Initialized with seed: " << seed << std::endl;
   srand(seed);
 

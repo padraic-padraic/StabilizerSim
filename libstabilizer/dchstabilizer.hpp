@@ -287,26 +287,30 @@ void DCHStabilizer::CX(unsigned control, unsigned target)
   uint_t shift = (one << control);
   //Update the control col of M
   M[control] ^= target_col;
+  bool target_bit = !!(M_diag1 & (one << target));
   for (unsigned i=0; i<n; i++)
   {
     // Update the control row of M
+    // We use the target col as M is symmetric
     M[i] ^= (((target_col >> i) & one) * shift);
     //Update the control row of G^-1
     G_inverse[i] ^= ( ((G_inverse[i] >> target) & one)  * shift);
   }
+  //Update control row/column with M_{t,t}
+  M[control] ^= target_bit * (one << target);
+  M[target] ^= target_bit * shift;
   // M_{c,c} += 2* M_{c,t}
   if ((target_col >> control) & one)
   {
     M_diag2 ^= shift;
   }
   // M_{c,c} += M_{t,t};
-  uint_t diagonal_target_bit = ((M_diag1 >> target) & one);
-  if ((M_diag1 >> control) &  diagonal_target_bit)
+  if(!!(M_diag1 & shift) & target_bit)
   {
     M_diag2 ^= shift;
   }
-  M_diag1 ^= diagonal_target_bit * shift;
-  M_diag2 ^= ((M_diag2 >> target) & one) * shift;
+  M_diag1 ^= target_bit*shift;
+  M_diag2 ^= ((M_diag2 >> target) & one)*shift;
   // Update the target column of G
   G[target] ^= G[control];
 }
@@ -395,7 +399,7 @@ void DCHStabilizer::CommutePauliDC(pauli_t &p)
       offdiag_terms += hamming_weight(p.X&M[i]);
     }
   }
-  phase += ((offdiag_terms >> 1) & one) * 2U;
+  phase += (!!(offdiag_terms & (one << 1))) * 2U;
   phase = (phase % 4);
   phase = (4-phase) %4;
   p.e = phase;
