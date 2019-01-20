@@ -212,6 +212,7 @@ void DCHStabilizer::Y(unsigned target)
 void DCHStabilizer::H(unsigned target)
 {
   // Represent H_{a} = \frac{1}{2}\left(X_{a} + Z_{a}\right)
+  std::cout << "Hadamard on qubit " << target << std::endl;
   pauli_t p, q;
   p.X ^= (one << target);
   q.Z ^= (one << target);
@@ -223,26 +224,37 @@ void DCHStabilizer::H(unsigned target)
   t_phase = t_phase % 4;
   uint_t u = s^q.X;
   unsigned u_phase = hamming_parity(s&q.Z) * 2U;
-  unsigned b, global;
-  if (u_phase>t_phase)
+  if(q.e != 0)
   {
-    b = u_phase - t_phase;
-    global = 2*t_phase;
+    throw std::logic_error("This pauli cannot have non-zero phase.");
   }
-  else if (u_phase < t_phase)
+  unsigned b;
+  if(u_phase == 0)
   {
-    uint_t scratch = t;
-    t = u;
-    u = scratch;
-    b = u_phase - t_phase;
-    global = 2*u_phase;
+    b = (4-t_phase);
   }
   else
   {
-    b = 0;
-    global = t_phase;
+    switch(t_phase)
+    {
+      case 0:
+        b = 2;
+        break;
+      case 1:
+        b = 1;
+        break;
+      case 2:
+        b=0;
+        break;
+      case 3:
+        b=3;
+        break;
+      default:
+        throw std::logic_error("Wat");
+    }
   }
-  omega.e = (omega.e + 2*global) %8;
+  std::cout << "Global phase is: " << t_phase << std::endl;
+  omega.e = (omega.e + 2*t_phase) %8;
   b = b%4;
   if(t==u)
   {
@@ -399,6 +411,8 @@ void DCHStabilizer::CommutePauliDC(pauli_t &p)
       offdiag_terms += hamming_weight(p.X&M[i]);
     }
   }
+  //Compensate for the zero diagonal in M
+  p.Z ^= (p.X & M_diag1);
   phase += (!!(offdiag_terms & (one << 1))) * 2U;
   phase = (phase % 4);
   phase = (4-phase) %4;
@@ -431,7 +445,7 @@ void DCHStabilizer::CommutePauli(pauli_t& p)
 
 void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
 {
-  b %=4;
+  b %= 4;
   if (t==u) {
     switch(b)
     {
@@ -455,12 +469,23 @@ void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
         throw std::logic_error("Invalid phase factor found b:" + std::to_string(b) + ".\n");
     }
   }
+  std::cout << "T string is :";
+  Print(t, n);
+  std::cout << std::endl;
+  std::cout << "U string is :";
+  Print(u, n);
+  std::cout << std::endl;
   uint_t nu0 = (t^u) & (~v);
   uint_t nu1 = (t^u) & v;
-  //Pick 
   unsigned q = 0;
   uint_t q_shift = zer;
   bool nu0Empty = true;
+  std::cout << "nu0: ";
+  Print(nu0, n);
+  std::cout << std::endl;
+  std::cout << "nu1: ";
+  Print(nu1, n);
+  std::cout << std::endl;
   if (nu0)
   {
     nu0Empty = false;
@@ -471,159 +496,182 @@ void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
     //First up, pick q
     for (unsigned i=0; i<n; i++)
     {
-      if (!!(nu0 & (one << q)))
+      if (!!(nu0 & (one << i)))
       {
         q=i;
-        q_shift = (one << q);
+        q_shift = (one << i);
         break;
       }
     }
     //
     nu0 ^= q_shift;
-  } else {
+  }
+  else
+  {
     //nu0 is empty
     // Pick q
     for (unsigned i=0; i<n; i++)
     {
-      if (!!(nu1 & (one << q)))
+      if (!!(nu1 & (one << i)))
       {
         q=i;
-        q_shift = (one << q);
+        q_shift = (one << i);
         break;
       }
     }
     nu1 ^= q_shift;
   }
-
-    //Pick the string with the q-th bit equal to zero. If necessary, swap the strings.
-    if (t & q_shift)
+  //Pick the string with the q-th bit equal to zero. If necessary, swap the strings.
+  if (!!(t & q_shift))
+  {
+    std::cout << "Swapping strings based on the qth bit" << std::endl;
+    s=u;
+    b=(4-b) % 4;
+    if(!!(u & q_shift))
     {
-        s=u;
-        omega.e=(omega.e + 2*b) % 8;
-        b=(4-b) % 4;
-        if(!!(u & q_shift))
-        {
-          throw std::logic_error("t and u strings do not differ.");
-        }
+      throw std::logic_error("t and u strings do not differ.");
     }
-    else
-    {
-        s=t;
+  }
+  else
+  {
+      s=t;
+  }
+  //We know have the qth bit looks like 
+  // |0>+i^{b}|1> = S^{b}|+>
 
-    }
-    //We know have the qth bit looks like 
-    // |0>+i^{b}|1> = S^{b}|+>
+  // change the order of H and S gates
+  // H^{a} S^{b} |+> = eta^{e1} S^{e2} H^{e3} |e4>
+  // here eta=exp( i (pi/4) )
+  // a=0,1
+  // b=0,1,2,3
+  //
+  // H^0 S^0 |+> = eta^0 S^0 H^1 |0>
+  // H^0 S^1 |+> = eta^0 S^1 H^1 |0>
+  // H^0 S^2 |+> = eta^0 S^0 H^1 |1>
+  // H^0 S^3 |+> = eta^0 S^1 H^1 |1>
+  //
+  // H^1 S^0 |+> = eta^0 S^0 H^0 |0>
+  // H^1 S^1 |+> = eta^1 S^1 H^1 |1>
+  // H^1 S^2 |+> = eta^0 S^0 H^0 |1>
+  // H^1 S^3 |+> = eta^{7} S^1 H^1 |0>
+  //
+  // "analytic" formula:
+  // e1 = a * (b mod 2) * ( 3*b -2 )
+  // e2 = b mod 2
+  // e3 = not(a) + a * (b mod 2)
+  // e4 = not(a)*(b>=2) + a*( (b==1) || (b==2) )
 
-    // change the order of H and S gates
-    // H^{a} S^{b} |+> = eta^{e1} S^{e2} H^{e3} |e4>
-    // here eta=exp( i (pi/4) )
-    // a=0,1
-    // b=0,1,2,3
-    //
-    // H^0 S^0 |+> = eta^0 S^0 H^1 |0>
-    // H^0 S^1 |+> = eta^0 S^1 H^1 |0>
-    // H^0 S^2 |+> = eta^0 S^0 H^1 |1>
-    // H^0 S^3 |+> = eta^0 S^1 H^1 |1>
-    //
-    // H^1 S^0 |+> = eta^0 S^0 H^0 |0>
-    // H^1 S^1 |+> = eta^1 S^1 H^1 |1>
-    // H^1 S^2 |+> = eta^0 S^0 H^0 |1>
-    // H^1 S^3 |+> = eta^{7} S^1 H^1 |0>
-    //
-    // "analytic" formula:
-    // e1 = a * (b mod 2) * ( 3*b -2 )
-    // e2 = b mod 2
-    // e3 = not(a) + a * (b mod 2)
-    // e4 = not(a)*(b>=2) + a*( (b==1) || (b==2) )
-
-    bool a=((v & q_shift)>0);
-    unsigned e1=a*(b % 2)*( 3*b -2);
-    unsigned e2 = b % 2;
-    bool e3 = ( (!a) != (a && ((b % 2)>0) ) );
-    bool e4 = ( ( (!a) && (b>=2) ) != (a && ((b==1) || (b==2)))  );
-    //Split up based on if nu0 is empty
-    if (nu0Empty)
+  bool a=((v & q_shift)>0);
+  unsigned e1=a*(b % 2)*( 3*b -2);
+  unsigned e2 = b % 2;
+  bool e3 = ( (!a) != (a && ((b % 2)>0) ) );
+  bool e4 = ( ( (!a) && (b>=2) ) != (a && ((b==1) || (b==2)))  );
+  std::cout << "H/S params: e1 "<< e1 << " e2:" << e2 << " e3:" << e3 << " e4:" << e4 << std::endl;
+  //Split up based on if nu0 is empty
+  if (nu0Empty)
+  {
+    std::cout << "nu0 is empty" << std::endl;
+    if (nu1)//if T2 != Identity
     {
-      if (nu1)//if T2 != Identity
+      //Right multiply UC by T2
+      for(unsigned i=0; i<n; i++)
       {
-        //Right multiply UC by T2
-        for(unsigned i=0; i<n; i++)
+        if((nu1 >> i) & one)
         {
-          if((nu1 >> i) & one)
+          //xor col i of G^{-1} into col q
+          G_inverse[q] ^= G_inverse[i];
+          uint_t shift = (one << i);
+          for(unsigned j=0; j<n; j++)
           {
-            //xor col i of G^{-1} into col q
-            G_inverse[q] ^= G_inverse[i];
-            uint_t shift = (one << i);
-            for(unsigned j=0; j<n; j++)
-            {
-              //xor row q of G into row i
-              G[j] ^= ((!!(G[j] & q_shift)) * shift);
-            }
-          }
-        }
-      }
-      if(e2) // Commute the s gate through Uc 
-      {
-        uint_t y = G_inverse[q];
-        M_diag2 ^= (y & M_diag1);
-        M_diag1 ^= y;
-        for(unsigned i=0; i<n; i++)
-        {
-          M[i] ^= ((y>>i)&one)*y;
-        }
-      }
-    }
-    else
-    {
-      if (nu0) //nu0\q Not Empty
-      {
-        //Commute WD through UC and add to UD
-        //Setup the Z vector, pull out the y vector
-        uint_t y = G_inverse[q];
-        uint_t z = zer;
-        for (unsigned j=0; j<n; j++)
-        {
-          if((nu1>>j) & one)
-          {
-            z ^= G_inverse[j];
-          }
-        }
-        // Diagonal elemenets M_{ii} += y_{i} + 2*z_{i}y_{i}
-        // 2* z_{i} = 0 if Z=0,2 or  2 if Z=1,3
-        if (e2)
-        {
-          M_diag2 ^= (y&M_diag1);
-          M_diag1 ^= y;
-        }
-        M_diag2 ^= (z & y);
-        // Offdiagonal elements
-        for (unsigned i=0; i<n; i++)
-        {
-          if((y>>i)&one)
-          {
-            M[i] ^= z;
-            if(e2)
-            {
-              M[i] ^= y;
-            }
-          }
-          if((z>>i)&one)
-          {
-            M[i] ^= y;
+            //xor row q of G into row i
+            G[j] ^= ((!!(G[j] & q_shift)) * shift);
           }
         }
       }
     }
-    // set q-th bit of s to e4
-    s&=~q_shift;
-    s^=e4*q_shift;
+    if(e2) // Commute the s gate through Uc 
+    {
+      uint_t y = G_inverse[q];
+      M_diag2 ^= (y & M_diag1);
+      M_diag1 ^= y;
+      for(unsigned i=0; i<n; i++)
+      {
+        M[i] ^= ((y>>i)&one)*y;
+        M[i] &= ~(one << i);
+      }
+    }
+  }
+  else
+  {
+    std::cout << "nu0 not empty" << std::endl;
+    //Commute WD through UC and add to UD
+    //Setup the Z vector, pull out the y vector
+    uint_t y = G_inverse[q];
+    uint_t z = zer;
+    for (unsigned j=0; j<n; j++)
+    {
+      if((nu1>>j) & one)
+      {
+        z ^= G_inverse[j];
+      }
+    }
+    // Diagonal elemenets M_{ii} += y_{i} + 2*z_{i}y_{i}
+    // 2* z_{i} = 0 if Z=0,2 or  2 if Z=1,3
+    if (e2)
+    {
+      M_diag2 ^= (y&M_diag1);
+      M_diag1 ^= y;
+    }
+    M_diag2 ^= (z & y);
+    // Offdiagonal elements
+    for (unsigned i=0; i<n; i++)
+    {
+      if((y>>i)&one)
+      {
+        M[i] ^= z;
+        if(e2)
+        {
+          M[i] ^= y;
+        }
+      }
+      if((z>>i)&one)
+      {
+        M[i] ^= y;
+      }
+      M[i] &= ~(one << i);
+    }
+    //Right multiply G by T0
+    if(nu0)
+    {
+      for(unsigned i=0; i<n; i++)
+      {
+        if((nu0 >> i) & one)
+        {
+          //xor col i of G^{-1} into col q
+          G_inverse[q] ^= G_inverse[i];
+          uint_t shift = (one << i);
+          for(unsigned j=0; j<n; j++)
+          {
+            //xor row q of G into row i
+            G[j] ^= ((!!(G[j] & q_shift)) * shift);
+          }
+        }
+      }
+    }
+  }
+    
+  // set q-th bit of s to e4
+  s&=~q_shift;
+  s^= (e4*q_shift);
+  // set q-th bit of v to e3
+  v&=~q_shift;
+  v^=e3*q_shift;
+  std::cout << "V after:";
+  Print(v, n);
+  std::cout << std::endl;
 
-    // set q-th bit of v to e3
-    v&=~q_shift;
-    v^=e3*q_shift;
-
-    // update the scalar factor omega
-    omega.e=(omega.e  + e1) % 8;
+  // update the scalar factor omega
+  omega.e=(omega.e  + e1) % 8;
 }
 
 }
