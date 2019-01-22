@@ -106,7 +106,7 @@ G_inverse(n_qubits, zer),
 M_diag1(zer),
 M_diag2(zer),
 M(n, zer),
-GT(n_qubits,zer),
+GT(n_qubits, zer),
 isReadyGT(false)
 {
   // Initialize G to the identity
@@ -163,11 +163,9 @@ void DCHStabilizer::HadamardBasisVector(uint_t x)
 void DCHStabilizer::S(unsigned target)
 {
   // Add one to M_{ii}
-  if ((M_diag1 >> target) & one)
-  {
-    M_diag2 ^= (one << target);
-  }
-  M_diag1 ^= (one << target);
+  uint_t shift = (one << target);
+  M_diag2 ^= (!!(M_diag1 & shift)) * shift;
+  M_diag1 ^= shift;
 }
 
 void DCHStabilizer::Sdag(unsigned target)
@@ -178,10 +176,8 @@ void DCHStabilizer::Sdag(unsigned target)
   // 2 + 3 = 5 = 1; => 10 + 11 = 01;
   // 3 + 3 = 6 = 2; => 11 + 11 = 10;
   // Simply flip the ones bit, conditionally flip twos bit
-  if (!((M_diag1 >> target) & one))
-  {
-    M_diag2 ^= (one << target);
-  }
+  uint_t shift = (one << target);
+  M_diag2 ^= ((!(M_diag1 & shift)) * shift);
   M_diag1 ^= (one << target);
 }
 
@@ -196,34 +192,50 @@ void DCHStabilizer::X(unsigned target)
   pauli_t p;
   p.X ^= (one << target);
   CommutePauli(p);
-  omega.e += (hamming_parity(p.Z&s))*4;
-  omega.e += 2*(p.e);
-  omega.e = omega.e % 8;
   s ^= p.X;
+  omega.e += (hamming_parity(p.Z&s)*4);
+  omega.e += (2*(p.e));
+  omega.e = omega.e % 8;
 }
 
 void DCHStabilizer::Y(unsigned target)
 {
-  Z(target);
   X(target);
-  omega.e = (omega.e + 2) % 8;
+  Z(target);
+  omega.e = (omega.e + 6) % 8;
 }
 
 void DCHStabilizer::H(unsigned target)
 {
   // Represent H_{a} = \frac{1}{2}\left(X_{a} + Z_{a}\right)
-  std::cout << "Hadamard on qubit " << target << std::endl;
+  // std::cout << "Hadamard on qubit " << target << std::endl;
   pauli_t p, q;
   p.X ^= (one << target);
   q.Z ^= (one << target);
   CommutePauli(p);
   CommutePauli(q);
+  #ifdef CATCH_VERSION_MAJOR
+  // std::cout << "p.e: " << p.e << std::endl;
+  // std::cout << "p.X: ";
+  // Print(p.X, n);
+  // std::cout << std::endl;
+  // std::cout << "p.Z: ";
+  // Print(p.Z, n);
+  // std::cout << std::endl;
+  // std::cout << "q.e: " << q.e << std::endl;
+  // std::cout << "q.X: ";
+  // Print(q.X, n);
+  // std::cout << std::endl;
+  // std::cout << "q.Z: ";
+  // Print(q.Z, n);
+  // std::cout << std::endl;
+  #endif
   uint_t t = s^p.X;
-  unsigned t_phase = hamming_parity(s&p.Z) * 2U;
+  unsigned t_phase = (hamming_parity(t&p.Z) * 2U);
   t_phase += p.e;
   t_phase = t_phase % 4;
   uint_t u = s^q.X;
-  unsigned u_phase = hamming_parity(s&q.Z) * 2U;
+  unsigned u_phase = ( hamming_parity(s&q.Z) * 2U);
   if(q.e != 0)
   {
     throw std::logic_error("This pauli cannot have non-zero phase.");
@@ -235,29 +247,14 @@ void DCHStabilizer::H(unsigned target)
   }
   else
   {
-    switch(t_phase)
-    {
-      case 0:
-        b = 2;
-        break;
-      case 1:
-        b = 1;
-        break;
-      case 2:
-        b=0;
-        break;
-      case 3:
-        b=3;
-        break;
-      default:
-        throw std::logic_error("Wat");
-    }
+    b = (4-t_phase+2)%4;
   }
-  std::cout << "Global phase is: " << t_phase << std::endl;
+  // std::cout << "Global phase is: " << t_phase << std::endl;
   omega.e = (omega.e + 2*t_phase) %8;
   b = b%4;
   if(t==u)
   {
+    // std::cout << "Found the same string" << std::endl;
     s = t;
     if(!((b==1) || (b==3))) // otherwise the state is not normalized
     {
@@ -296,33 +293,44 @@ void DCHStabilizer::CX(unsigned control, unsigned target)
   }
   isReadyGT = false;
   uint_t target_col = M[target];
-  uint_t shift = (one << control);
+  uint_t control_shift = (one << control);
+  uint_t target_shift = (one << target);
   //Update the control col of M
   M[control] ^= target_col;
-  bool target_bit = !!(M_diag1 & (one << target));
+  bool target_bit = !!(M_diag1 & target_shift);
   for (unsigned i=0; i<n; i++)
   {
     // Update the control row of M
     // We use the target col as M is symmetric
-    M[i] ^= (((target_col >> i) & one) * shift);
+    M[i] ^= (((target_col >> i) & one) * control_shift);
     //Update the control row of G^-1
-    G_inverse[i] ^= ( ((G_inverse[i] >> target) & one)  * shift);
+    G_inverse[i] ^= ( !!(G_inverse[i] & target_shift)  * control_shift);
   }
   //Update control row/column with M_{t,t}
-  M[control] ^= target_bit * (one << target);
-  M[target] ^= target_bit * shift;
+  M[control] ^= (target_bit * target_shift);
+  M[target] ^= (target_bit * control_shift);
   // M_{c,c} += 2* M_{c,t}
   if ((target_col >> control) & one)
   {
-    M_diag2 ^= shift;
+    M_diag2 ^= control_shift;
   }
   // M_{c,c} += M_{t,t};
-  if(!!(M_diag1 & shift) & target_bit)
+  if(!!(M_diag1 & control_shift) & target_bit)
   {
-    M_diag2 ^= shift;
+    M_diag2 ^= control_shift;
   }
-  M_diag1 ^= target_bit*shift;
-  M_diag2 ^= ((M_diag2 >> target) & one)*shift;
+  M_diag1 ^= (target_bit*control_shift);
+  M_diag2 ^= ((!!(M_diag2 & target_shift))*control_shift);
+  #ifdef CATCH_VERSION_MAJOR
+  for(unsigned i=0; i<n; i++)
+  {
+    if(!!(M[i] & (one << i)))
+    {
+      // std::cout << "Non-zero diagonal M detected in CX(" << control << "," << target <<std::endl;
+      throw std::runtime_error("Get OUT");
+    }
+  }
+  #endif
   // Update the target column of G
   G[target] ^= G[control];
 }
@@ -339,7 +347,7 @@ scalar_t DCHStabilizer::Amplitude(uint_t x)
   pauli_t p;
   p.X = x;
   CommutePauliDC(p);
-  amp.e = 2*p.e;
+  amp.e = (2*p.e);
   if (!!((p.X ^ s) & ~v))
   {
     amp.eps = 0;
@@ -350,7 +358,7 @@ scalar_t DCHStabilizer::Amplitude(uint_t x)
     amp.e += 4;
     amp.e = (amp.e%8);
   }
-  amp.conjugate();
+  // amp.conjugate();
   amp *= omega;
   return amp;
 }
@@ -360,7 +368,7 @@ void DCHStabilizer::MeasurePauli(pauli_t P)
   CommutePauli(P);
   unsigned b = P.e;
   uint_t u = s^P.X;
-  b += hamming_parity(s&P.Z) * 2;
+  b += (hamming_parity(s&P.Z) * 2);
   b = b%4;
   UpdateSVector(s, u, b);
 }
@@ -401,21 +409,24 @@ void DCHStabilizer::TransposeG()
 
 void DCHStabilizer::CommutePauliDC(pauli_t &p)
 {
-  unsigned phase = hamming_weight(p.X&M_diag1) + 2*hamming_weight(p.X&M_diag2);
-  uint_t offdiag_terms = zer;
-  for (unsigned i=0; i<n; i++)
+  unsigned phase = 0;
+  if(p.X)
   {
-    p.Z ^= (one << i) * hamming_parity(p.X&M[i]);
-    if((p.X>>i)& one)
+    phase = (hamming_weight(p.X&M_diag1)%4) + (2*hamming_parity(p.X&M_diag2));
+    uint_t offdiag_terms = zer;
+    for (unsigned i=0; i<n; i++)
     {
-      offdiag_terms += hamming_weight(p.X&M[i]);
+      p.Z ^= ((one << i) * hamming_parity(p.X&M[i]));
+      if((p.X>>i)& one)
+      {
+        offdiag_terms += hamming_weight(p.X&M[i]);
+      }
     }
+    //Compensate for the zero diagonal in M
+    p.Z ^= (p.X & M_diag1);
+    phase += ((!!(offdiag_terms & (one << 1))) * 2U);
+    phase = (phase % 4);
   }
-  //Compensate for the zero diagonal in M
-  p.Z ^= (p.X & M_diag1);
-  phase += (!!(offdiag_terms & (one << 1))) * 2U;
-  phase = (phase % 4);
-  phase = (4-phase) %4;
   p.e = phase;
   //Commute through C:
   uint_t x_temp = zer;
@@ -427,7 +438,7 @@ void DCHStabilizer::CommutePauliDC(pauli_t &p)
     {
       z_temp ^= G[i];
     }
-    x_temp ^= shift * hamming_parity(p.X & G_inverse[i]);
+    x_temp ^= (shift * hamming_parity(p.X & G_inverse[i]));
   }
   p.X = x_temp;
   p.Z = z_temp;
@@ -438,13 +449,15 @@ void DCHStabilizer::CommutePauli(pauli_t& p)
   CommutePauliDC(p);
   uint_t x_temp = p.X;
   uint_t z_temp = p.Z;
+  p.e = (p.e + (hamming_parity(p.X & p.Z & v)) * 2)%4;
   //Commute through H
-  p.X = (z_temp & v) ^ (x_temp & ~v);
-  p.Z = (x_temp & v) ^ (z_temp & ~v);
+  p.X = (z_temp & v) ^ (x_temp & (~v));
+  p.Z = (x_temp & v) ^ (z_temp & (~v));
 }
 
 void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
 {
+  // std::cout << "Howdy from inside updateSvector!" << std::endl;
   b %= 4;
   if (t==u) {
     switch(b)
@@ -469,23 +482,23 @@ void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
         throw std::logic_error("Invalid phase factor found b:" + std::to_string(b) + ".\n");
     }
   }
-  std::cout << "T string is :";
-  Print(t, n);
-  std::cout << std::endl;
-  std::cout << "U string is :";
-  Print(u, n);
-  std::cout << std::endl;
+  // std::cout << "T string is :";
+  // Print(t, n);
+  // std::cout << std::endl;
+  // std::cout << "U string is :";
+  // Print(u, n);
+  // std::cout << std::endl;
   uint_t nu0 = (t^u) & (~v);
   uint_t nu1 = (t^u) & v;
   unsigned q = 0;
   uint_t q_shift = zer;
   bool nu0Empty = true;
-  std::cout << "nu0: ";
-  Print(nu0, n);
-  std::cout << std::endl;
-  std::cout << "nu1: ";
-  Print(nu1, n);
-  std::cout << std::endl;
+  // std::cout << "nu0: ";
+  // Print(nu0, n);
+  // std::cout << std::endl;
+  // std::cout << "nu1: ";
+  // Print(nu1, n);
+  // std::cout << std::endl;
   if (nu0)
   {
     nu0Empty = false;
@@ -504,7 +517,7 @@ void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
       }
     }
     //
-    nu0 ^= q_shift;
+    nu0 &= (~q_shift);
   }
   else
   {
@@ -519,13 +532,14 @@ void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
         break;
       }
     }
-    nu1 ^= q_shift;
+    nu1 &= (~q_shift);
   }
   //Pick the string with the q-th bit equal to zero. If necessary, swap the strings.
   if (!!(t & q_shift))
   {
-    std::cout << "Swapping strings based on the qth bit" << std::endl;
+    // std::cout << "Swapping strings based on the qth bit" << std::endl;
     s=u;
+    omega.e = (omega.e + 2*b) % 8;
     b=(4-b) % 4;
     if(!!(u & q_shift))
     {
@@ -566,11 +580,11 @@ void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
   unsigned e2 = b % 2;
   bool e3 = ( (!a) != (a && ((b % 2)>0) ) );
   bool e4 = ( ( (!a) && (b>=2) ) != (a && ((b==1) || (b==2)))  );
-  std::cout << "H/S params: e1 "<< e1 << " e2:" << e2 << " e3:" << e3 << " e4:" << e4 << std::endl;
+  // std::cout << "H/S params: e1 "<< e1 << " e2:" << e2 << " e3:" << e3 << " e4:" << e4 << std::endl;
   //Split up based on if nu0 is empty
   if (nu0Empty)
   {
-    std::cout << "nu0 is empty" << std::endl;
+    // std::cout << "nu0 is empty" << std::endl;
     if (nu1)//if T2 != Identity
     {
       //Right multiply UC by T2
@@ -589,7 +603,7 @@ void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
         }
       }
     }
-    if(e2) // Commute the s gate through Uc 
+    if(e2) // Commute the s gate through the (updated) UC 
     {
       uint_t y = G_inverse[q];
       M_diag2 ^= (y & M_diag1);
@@ -597,13 +611,13 @@ void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
       for(unsigned i=0; i<n; i++)
       {
         M[i] ^= ((y>>i)&one)*y;
-        M[i] &= ~(one << i);
+        M[i] &= ~(one << i); //Zero out the diagonal
       }
     }
   }
   else
   {
-    std::cout << "nu0 not empty" << std::endl;
+    // std::cout << "nu0 not empty" << std::endl;
     //Commute WD through UC and add to UD
     //Setup the Z vector, pull out the y vector
     uint_t y = G_inverse[q];
@@ -647,13 +661,13 @@ void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
       {
         if((nu0 >> i) & one)
         {
-          //xor col i of G^{-1} into col q
-          G_inverse[q] ^= G_inverse[i];
+          //xor col q of G^{-1} into col i
+          G_inverse[i] ^= G_inverse[q];
           uint_t shift = (one << i);
           for(unsigned j=0; j<n; j++)
           {
-            //xor row q of G into row i
-            G[j] ^= ((!!(G[j] & q_shift)) * shift);
+            //xor row i of G into row q
+            G[j] ^= ((!!(G[j] & shift)) * q_shift);
           }
         }
       }
@@ -666,9 +680,9 @@ void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
   // set q-th bit of v to e3
   v&=~q_shift;
   v^=e3*q_shift;
-  std::cout << "V after:";
-  Print(v, n);
-  std::cout << std::endl;
+  // std::cout << "V after:";
+  // Print(v, n);
+  // std::cout << std::endl;
 
   // update the scalar factor omega
   omega.e=(omega.e  + e1) % 8;

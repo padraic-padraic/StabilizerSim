@@ -33,6 +33,7 @@ bool check_states(StabilizerState &ch, DCHStabilizer &dch)
 {
     unsigned n = ch.NQubits();
     uint_t dim = one << n;
+    bool result = true;
     for(uint_t i=0; i<dim; i++)
     {
         scalar_t amp;
@@ -46,10 +47,10 @@ bool check_states(StabilizerState &ch, DCHStabilizer &dch)
             std::cout << ch_amp << " != " << dch_amp << " for string ";
             Print(i, n);
             std::cout << std::endl;
-            return false;
+            result =  false;
         }
     }
-    return true;
+    return result;
 }
 
 //--------------------------------//
@@ -178,7 +179,7 @@ void random_circuit_verify(StabilizerState &state1,  DCHStabilizer &state2, std:
 
 std::vector<Gate> phase_gates = {Gate::S, Gate::Sdag, Gate::Z, Gate::CZ};
 std::vector<Gate> pauli_gates = {Gate::X, Gate::Y, Gate::Z};
-std::vector<Gate> deterministic_gates = {Gate::Z, Gate::CZ, Gate::CX, Gate::S, Gate::Sdag};
+std::vector<Gate> deterministic_gates = {Gate::Z, Gate::CZ, Gate::CX, Gate::S, Gate::Sdag, Gate::X, Gate::Y};
 
 //--------------------------------//
 // Tests                          //
@@ -470,28 +471,28 @@ TEST_CASE("Random Deterministic Circuit")
     random_circuit_verify(ch, dch, deterministic_gates);
 }
 
-// TEST_CASE("Test Hadamard Gates")
-// {
-//     unsigned n_qubits = 10;
-//     SECTION("Plus state")
-//     {
-//         StabilizerState ch(n_qubits);
-//         DCHStabilizer dch(n_qubits);
-//         ch.H(0);
-//         dch.H(0);
-//         REQUIRE(check_states(ch, dch));
-//     }
-//     SECTION("Minus state")
-//     {
-//         StabilizerState ch(n_qubits);
-//         DCHStabilizer dch(n_qubits);
-//         ch.X(0);
-//         dch.X(0);
-//         ch.H(0);
-//         dch.H(0);
-//         REQUIRE(check_states(ch, dch));
-//     }
-// }
+TEST_CASE("Test Hadamard Gates")
+{
+    unsigned n_qubits = 10;
+    SECTION("Plus state")
+    {
+        StabilizerState ch(n_qubits);
+        DCHStabilizer dch(n_qubits);
+        ch.H(0);
+        dch.H(0);
+        REQUIRE(check_states(ch, dch));
+    }
+    SECTION("Minus state")
+    {
+        StabilizerState ch(n_qubits);
+        DCHStabilizer dch(n_qubits);
+        ch.X(0);
+        dch.X(0);
+        ch.H(0);
+        dch.H(0);
+        REQUIRE(check_states(ch, dch));
+    }
+}
 
 TEST_CASE("Random H and Paulis")
 {
@@ -513,27 +514,30 @@ TEST_CASE("Random H and Paulis")
         }
     }
     // CAPTURE(x_str);
-    std::vector<Gate> gs = {Gate::X, Gate::Y, Gate::Z, Gate::CZ, Gate::S, Gate::Sdag, Gate::H};
+    std::vector<Gate> gs = {Gate::S, Gate::Sdag, Gate::H};
     random_circuit_verify(ch, dch, gs, 200);
 }
 
-TEST_CASE("THE BUG REPRODUCER HAS LOGGED ON")
+TEST_CASE("A simple one.")
 {
     unsigned n_qubits = 10;
-    StabilizerState ch(n_qubits);
-    DCHStabilizer dch(n_qubits);
-    ch.H(7);
-    ch.X(7);
-    dch.X(7);
-    dch.H(7);
-    check_states(ch, dch);
+    StabilizerState ch(10);
+    DCHStabilizer dch(10);
+    // ch.X(8);
+    // ch.H(8);
+    ch.Sdag(8);
+    ch.H(8);
+    // dch.X(8);
+    // dch.H(8);
+    dch.Sdag(8);
+    dch.H(8);
+    REQUIRE(check_states(ch, dch));
 }
 
 int main( int argc, char* argv[] ) {
   time_t t;
-  // unsigned seed = (unsigned) time(&t);
-  // unsigned seed = 1548008692;
-  unsigned seed = 1548011521;
+  unsigned seed = (unsigned) time(&t);
+  // unsigned seed = 1548156369;
   std::cout << "Initialized with seed: " << seed << std::endl;
   srand(seed);
 

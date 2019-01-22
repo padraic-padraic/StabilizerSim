@@ -607,6 +607,7 @@ void StabilizerState::UpdateSvector(uint_t t, uint_t u, unsigned b)
 {
 // take care of the trivial case: t=u
     if (t==u)  // multiply omega by (1+i^b)/sqrt(2)
+    {
         switch(b)
         {
              case 0 :
@@ -628,7 +629,9 @@ void StabilizerState::UpdateSvector(uint_t t, uint_t u, unsigned b)
              default :
                 // we should not get here
                 throw std::logic_error("Invalid phase factor found b:" + std::to_string(b) + ".\n");
+                break;
          }
+    }
 
     // now t and u are distinct
     isReadyFT=false; // below we are going to change F and M
