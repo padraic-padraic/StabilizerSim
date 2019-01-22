@@ -496,7 +496,7 @@ TEST_CASE("Test Hadamard Gates")
 
 TEST_CASE("Random H and Paulis")
 {
-    unsigned n_qubits = 10;
+    unsigned n_qubits = 50;
     StabilizerState ch(n_qubits);
     DCHStabilizer dch(n_qubits);
     uint_t x_init = zer;
@@ -514,7 +514,7 @@ TEST_CASE("Random H and Paulis")
         }
     }
     // CAPTURE(x_str);
-    std::vector<Gate> gs = {Gate::S, Gate::Sdag, Gate::H};
+    std::vector<Gate> gs = {Gate::S, Gate::Sdag, Gate::H, Gate::X, Gate::Y, Gate::Z, Gate::CZ, Gate::H};
     random_circuit_verify(ch, dch, gs, 200);
 }
 
