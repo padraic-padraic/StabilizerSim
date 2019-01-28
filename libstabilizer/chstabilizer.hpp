@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "core.hpp"
+
 namespace StabilizerSimulator
 {
 // Clifford simulator based on the CH-form 
@@ -94,15 +95,8 @@ public:
               const std::vector< std::complex<double> >& phases, 
               const std::vector<uint_t>& Samples_d1,
               const std::vector<uint_t> &Samples_d2, 
-              const std::vector< std::vector<uint_t> >& Samples);
-  #ifdef _OPENMP
-  friend double ParallelNormEstimate(std::vector<StabilizerState>& states,
-                        const std::vector< std::complex<double> >& phases, 
-                        const std::vector<uint_t>& Samples_d1,
-                        const std::vector<uint_t> &Samples_d2, 
-                        const std::vector< std::vector<uint_t> >& Samples,
-                        int n_threads);
-  #endif
+              const std::vector< std::vector<uint_t> >& Samples,
+              int n_threads=-1);
 
 private:
 

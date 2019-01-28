@@ -67,6 +67,13 @@ public:
                                 // where P is an arbitrary Pauli operator
     void MeasurePauliProjector(std::vector<pauli_t>& generators);
 
+    template<class T> friend double NormEstimate(std::vector<T>& states,
+            const std::vector< std::complex<double> >& phases, 
+            const std::vector<uint_t>& Samples_d1,
+            const std::vector<uint_t> &Samples_d2, 
+            const std::vector< std::vector<uint_t> >& Samples,
+            int n_threads=-1);
+
     #ifdef CATCH_VERSION_MAJOR //Helper 
     void test_commute_pauli();
     #endif
@@ -91,6 +98,8 @@ private:
     void CommutePauli(pauli_t &P);
     //Update used for Hadamards and Measurement
     void UpdateSVector(uint_t t, uint_t u, unsigned b);
+
+    scalar_t InnerProduct(uint_t A_diag1, uint_t A_diag2, std::vector<uint_t> &A) const;
 };
 
 //-------------------------------//
@@ -107,12 +116,13 @@ M_diag1(zer),
 M_diag2(zer),
 M(n, zer),
 GT(n_qubits, zer),
-isReadyGT(false)
+isReadyGT(true)
 {
   // Initialize G to the identity
   for (unsigned i=0; i<n_qubits; i++)
   {
     G[i] |= (one << i);
+    GT[i] |= (one << i);
     G_inverse[i] |= (one << i);
   }
 };
@@ -140,9 +150,10 @@ void DCHStabilizer::CompBasisVector(uint_t x)
   for (unsigned i=0; i<n; i++)
   {
     G[i] = (one << i);
+    GT[i] = (one << i)
     G_inverse[i] = (one << i);
   }
-  isReadyGT = false;
+  isReadyGT = true;
 }
 
 void DCHStabilizer::HadamardBasisVector(uint_t x)
@@ -321,16 +332,6 @@ void DCHStabilizer::CX(unsigned control, unsigned target)
   }
   M_diag1 ^= (target_bit*control_shift);
   M_diag2 ^= ((!!(M_diag2 & target_shift))*control_shift);
-  #ifdef CATCH_VERSION_MAJOR
-  for(unsigned i=0; i<n; i++)
-  {
-    if(!!(M[i] & (one << i)))
-    {
-      // std::cout << "Non-zero diagonal M detected in CX(" << control << "," << target <<std::endl;
-      throw std::runtime_error("Get OUT");
-    }
-  }
-  #endif
   // Update the target column of G
   G[target] ^= G[control];
 }
@@ -358,7 +359,6 @@ scalar_t DCHStabilizer::Amplitude(uint_t x)
     amp.e += 4;
     amp.e = (amp.e%8);
   }
-  // amp.conjugate();
   amp *= omega;
   return amp;
 }
@@ -587,6 +587,7 @@ void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
     // std::cout << "nu0 is empty" << std::endl;
     if (nu1)//if T2 != Identity
     {
+      isReadyGT = false;
       //Right multiply UC by T2
       for(unsigned i=0; i<n; i++)
       {
@@ -657,6 +658,7 @@ void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
     //Right multiply G by T0
     if(nu0)
     {
+      isReadyGT=false;
       for(unsigned i=0; i<n; i++)
       {
         if((nu0 >> i) & one)
@@ -686,6 +688,107 @@ void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
 
   // update the scalar factor omega
   omega.e=(omega.e  + e1) % 8;
+}
+
+scalar_t InnerProduct(uint_t A_diag1, uint_t A_diag2, std::vector<uint_t> &A) const
+{
+    if(!isReadyGT)
+    {
+        TransposeG();
+    }
+    std::vector<uint_t> placeholder(n, zer);
+    std::vector<uint_t> B(n, zer);
+    uint_t placeholder_diag1=zer, placeholder_diag2=zer;
+    // Setup the matrix M+A
+    placeholder_diag2 = (A_diag2 ^ M_diag2 ^ (A_diag1 & M_diag1));
+    placeholder_diag1 = (A_diag1 ^ M_diag1);
+    for(unsigned i=0; i<n; i++)
+    {
+        B[i] = (A[i] ^ M[i]);
+    }
+    //Compute (M+A)&G
+    for(unsigned i=0; i<n; i++)
+    {
+        uint_t col_i = B[i]; //Grab a column, it's symmetric
+        uint_t shift = (one << i)
+        for(unsigned j=0; j<n; j++)
+        {
+            placeholder[j] ^= (hamming_parity(col_i & G[j]) *shift);
+        }
+    }
+    //Compute the final matrix B = G^{T}(M+A)G. The result is symettric, so we can save some time
+    uint_t B_diag1=zer, B_diag2=zer;
+    for(unsigned i=0; i<n; i++)
+    {
+        uint_t col_i = G[i];
+        uint_t i_shift = (one << i);
+        for(unsigned j=i+1; j<n; j++)
+        {
+            if(hamming_parity(col_i & placeholder[j]))
+            {
+                B[j] |= i_shift;
+                B[i] |= (one << j);
+            }
+        }
+        B[i] &= ~(shift); // Ensure zero diagonal
+        for(unsigned k=0; k<n; k++)
+        {
+            uint_t k_shift = (one << k);
+            if(!!(col_i & k_shift))
+            {
+                B_diag2 ^= (!!(placeholder_diag1 & k_shift)*i_shift);
+            }
+            B_diag1 ^= (!!(placeholder_diag1&k_shift))*i_shift;
+            B_diag2 ^= (!!(placeholder_diag2&k_shift))*i_shift
+            for(unsigned l=k+1; k<n; k++)
+            {
+                if((placeholder[l]>>k) & (col_i >> k) & (col_i >> l) & one)
+                {
+                    B_diag2 ^= i_shift;
+                }
+            }
+        }
+    }
+    //Setup the quadratic form to evaluate the exponential sum
+    QuadraticForm q(hamming_weight(v));
+    uint_t s0 = s&(~v);
+    q.Q = (2*hamming_weight(s0&B_diag1))%8;
+    q.Q = (q.Q + 4*hamming_parity(s0&B_diag2))%8;
+    for(unsigned i=0; i<n; i++)
+    {
+        uint_t i_shift = (one << i);
+        if(!!(s0 & i_shift))
+        {
+            for(unsigned j=i+1; j<n; j++)
+            {
+                q.Q += (4U * ((s0>>j) & (B[i]>>j)&one));
+            }
+        }
+        //Setup D, J
+        if(!!(v&i_shift))
+        {
+            uint_t col_shift = (one << i);
+            q.D1 ^= (!!(B_diag1 & i_shift) * col_shift);
+            q.D2 ^= (( !!((B_diag2 ^ s) & i_shift) ^
+                         hamming_parity(B[i] & s))* col_shift);
+            unsigned row = 0;
+            for(unsigned j=0; j<n; j++)
+            {
+                if(!!(v & (one << j)))
+                {
+                    q.J |= (!!(B[j] & i_shift) * (one << row));
+                    row++;
+                }
+            }
+            col++;
+        }
+    }
+    scalar_t amp = q.ExponentialSum();
+    amp.p -= (n+hamming_weight(v));
+    scalar_t psi_amp(omega);
+    psi_amp.conjugate();
+    amp *= psi_amp;
+    return amp;
 }
 
 }

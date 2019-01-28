@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <complex>
 #include <iostream>
+#include <map>
 #include <string>
 #include <time.h>
 #include <vector>
@@ -16,7 +17,6 @@
 using namespace StabilizerSimulator;
 
 using complex_t = std::complex<double>;
-
 
 //--------------------------------//
 // Helper methods                 //
