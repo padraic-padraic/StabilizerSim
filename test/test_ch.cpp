@@ -180,6 +180,7 @@ void random_circuit_verify(StabilizerState &state1,  DCHStabilizer &state2, std:
 std::vector<Gate> phase_gates = {Gate::S, Gate::Sdag, Gate::Z, Gate::CZ};
 std::vector<Gate> pauli_gates = {Gate::X, Gate::Y, Gate::Z};
 std::vector<Gate> deterministic_gates = {Gate::Z, Gate::CZ, Gate::CX, Gate::S, Gate::Sdag, Gate::X, Gate::Y};
+std::vector<Gate> all_gates = {Gate::X, Gate::Y, Gate::Z, Gate::S, Gate::Sdag, Gate::CX, Gate::CZ, Gate::H};
 
 //--------------------------------//
 // Tests                          //
@@ -518,20 +519,22 @@ TEST_CASE("Random H and Paulis")
     random_circuit_verify(ch, dch, gs, 200);
 }
 
+template <class T> scalar_t test_inner_product(T &state, uint_t &sample_1, uint_t &sample_2,
+                                         std::vector<uint_t> &sample)
+{
+    scalar_t amp = state.InnerProduct(sample_1, sample_2, sample)
+}
+
 TEST_CASE("A simple one.")
 {
     unsigned n_qubits = 10;
     StabilizerState ch(10);
     DCHStabilizer dch(10);
-    // ch.X(8);
-    // ch.H(8);
-    ch.Sdag(8);
-    ch.H(8);
-    // dch.X(8);
-    // dch.H(8);
-    dch.Sdag(8);
-    dch.H(8);
-    REQUIRE(check_states(ch, dch));
+    random_circuit_verify(ch, dch, all_gates, 30);
+    uint_t ds_1 = zer, ds_2 = zer;
+    std::vector<uint_t> ds(n_qubits, zer);
+    scalar_t ch_amp = ch.test_inner_product(ch, ds_1, ds_2, ds);
+    scalar_t dch_amp = dch.test_inner_product(ch, ds_1, ds_2, ds);
 }
 
 int main( int argc, char* argv[] ) {

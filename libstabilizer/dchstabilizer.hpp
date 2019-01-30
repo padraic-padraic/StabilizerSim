@@ -76,6 +76,8 @@ public:
 
     #ifdef CATCH_VERSION_MAJOR //Helper 
     void test_commute_pauli();
+    template<class T> friend scalar_t test_inner_product(T &state, uint_t &sample_1, uint_t &sample_2,
+            std::vector<uint_t> &sample);
     #endif
 
 private:
