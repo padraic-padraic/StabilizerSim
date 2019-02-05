@@ -307,10 +307,10 @@ std::ostream& operator<<(std::ostream& os, const QuadraticForm& q)
 // q(x)=q(x_1,...,x_n)
 // q(x)=J0 + sum_{a=1}^n J1_a x_a + 4*sum_{1<=a<b<=n| J2_{a,b} x_a x_b  (mod 8)
 //
-// Expects          J0=0,1,...,7
-//                  J1_a=0,2,4,6
-//                  J2_{a,b}=0,1
-//                  J2 = symmetric binary matrix with zero diagonal
+// Expects          Q=0,1,...,7
+//                  D_a=0,2,4,6
+//                  J_{a,b}=0,1
+//                  J = symmetric binary matrix with zero diagonal
 // IMPORTANT: J2 MUST HAVE LOGICAL TYPE !!
 //
 // Output: integers p>=0, m=0,1,2,..,7, and eps=0,1  such that

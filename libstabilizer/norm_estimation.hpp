@@ -11,6 +11,17 @@ namespace StabilizerSimulator
 {
 
 template<class T> double NormEstimate(std::vector<T>& states, const std::vector< std::complex<double> >& phases, 
+                  const std::vector<uint_t>& Samples_d1, const std::vector<uint_t> &Samples_d2, 
+                  const std::vector< std::vector<uint_t> >& Samples)
+{
+  int n_threads = 1;
+  #ifdef _OPENMP
+  n_threads = omp_get_max_threads();
+  #endif
+  NormEstimate(states, phases, Samples_d1, Samples_d2, Samples, n_threads);
+}
+
+template<class T> double NormEstimate(std::vector<T>& states, const std::vector< std::complex<double> >& phases, 
                     const std::vector<uint_t>& Samples_d1, const std::vector<uint_t> &Samples_d2, 
                     const std::vector< std::vector<uint_t> >& Samples, int n_threads)
 {
@@ -27,7 +38,7 @@ template<class T> double NormEstimate(std::vector<T>& states, const std::vector<
     for (size_t i=0; i<L; i++)
     {
       double re_eta =0., im_eta = 0.;
-      #pragma omp parallel for reduction(+:re_eta) reduction(+:im_eta)
+      #pragma omp parallel for if(n_threads > 1) reduction(+:re_eta) reduction(+:im_eta) num_threads(n_threads)
       for (uint_t j=0; j<states.size(); j++)
       {
           if(states[j].ScalarPart().eps != 0)
@@ -40,7 +51,7 @@ template<class T> double NormEstimate(std::vector<T>& states, const std::vector<
                     amp.p--;
                   }
                   double mag = pow(2, amp.p/(double) 2);
-                  cdouble phase(RE_PHASE[amp.e], IM_PHASE[amp.e]);
+                  std::complex<double> phase(RE_PHASE[amp.e], IM_PHASE[amp.e]);
                   phase *= conj(phases[j]);
                   re_eta += (mag * real(phase));
                   im_eta += (mag * imag(phase));

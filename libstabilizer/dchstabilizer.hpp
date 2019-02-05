@@ -71,8 +71,13 @@ public:
             const std::vector< std::complex<double> >& phases, 
             const std::vector<uint_t>& Samples_d1,
             const std::vector<uint_t> &Samples_d2, 
+            const std::vector< std::vector<uint_t> >& Samples);
+    template<class T> friend double NormEstimate(std::vector<T>& states,
+            const std::vector< std::complex<double> >& phases, 
+            const std::vector<uint_t>& Samples_d1,
+            const std::vector<uint_t> &Samples_d2, 
             const std::vector< std::vector<uint_t> >& Samples,
-            int n_threads=-1);
+            int n_threads);
 
     #ifdef CATCH_VERSION_MAJOR //Helper 
     void test_commute_pauli();
@@ -764,45 +769,42 @@ scalar_t DCHStabilizer::InnerProduct(uint_t A_diag1, uint_t A_diag2, std::vector
         }
     }
     //Setup the quadratic form to evaluate the exponential sum
-    QuadraticForm q(hamming_weight(v));
     uint_t s0 = s&(~v);
-    q.Q = hamming_parity(s&v)*4;
-    q.Q = (q.Q + 2*hamming_weight(s0&B_diag1))%8;
-    q.Q = (q.Q + 4*hamming_parity(s0&B_diag2))%8;
+    uint_t s1 = s&v;
+    QuadraticForm q(hamming_weight(v));
+    // Do the diagonal part of Q=s(0)Bs(0)^{T}
+    q.Q = 2*(hamming_weight(s0&B_diag1)%4) + 4U*hamming_parity(s0&B_diag2);
+    unsigned col = 0;
     for(unsigned i=0; i<n; i++)
     {
-        uint_t i_shift = (one << i);
-        if(!!(s0 & i_shift))
+      uint_t i_shift = (one << i);
+      if(!!(s0&i_shift))
+      {
+        for(unsigned j=i+1; j<n; j++)
         {
-            for(unsigned j=i+1; j<n; j++)
-            {
-                q.Q += (4U * ((s0>>j) & (B[i]>>j)&one));
-            }
+          if(!!(s0 & B[i] & (one << j)))
+          {
+            q.Q = (q.Q+4);
+          }
         }
-        //Setup D, J
-        if(!!(v&i_shift))
+      }
+      if (!!(v&i_shift))
+      {
+        uint_t col_shift = (one << col);
+        q.D1 ^= (!!(B_diag1 & i_shift))*col_shift;
+        q.D2 ^= (!!((B_diag2 ^ s1) & i_shift) ^ hamming_parity(B[i]&s0)) * col_shift;
+        unsigned row=0;
+        for(unsigned j=0; j<n; j++)
         {
-            uint_t col_shift = (one << i);
-            q.D1 ^= (!!(B_diag1 & i_shift) * col_shift);
-            q.D2 ^= (( !!((B_diag2 ^ s) & i_shift) ^
-                         hamming_parity(B[i] & s))* col_shift);
-            uint_t row = one;
-            for(unsigned j=0; j<n; j++)
-            {
-                if(!!(v & (one << j)))
-                {
-                    q.J[col] |= (!!(B[j] & i_shift) * row);
-                    row = (row << 1);
-                }
-            }
-            col++;
+          q.J[col] |= (!!(v&B[i]&(one << j)))*(one << row);
+          row++;
         }
+        col++;
+      }
     }
     scalar_t amp = q.ExponentialSum();
     amp.p -= (n+hamming_weight(v));
-    scalar_t psi_amp(omega);
-    psi_amp.conjugate();
-    amp *= psi_amp;
+    amp *= omega;
     return amp;
 }
 

@@ -91,16 +91,20 @@ public:
                                            // x = current Metropolis state
   inline void AcceptFlip() {P=Q;} // accept the proposed bit flip
     
-  friend double NormEstimate(std::vector<StabilizerState>& states,
-              const std::vector< std::complex<double> >& phases, 
-              const std::vector<uint_t>& Samples_d1,
-              const std::vector<uint_t> &Samples_d2, 
-              const std::vector< std::vector<uint_t> >& Samples,
-              int n_threads=-1);
+  template<class T> friend double NormEstimate(std::vector<T>& states,
+          const std::vector< std::complex<double> >& phases, 
+          const std::vector<uint_t>& Samples_d1,
+          const std::vector<uint_t> &Samples_d2, 
+          const std::vector< std::vector<uint_t> >& Samples);
+  template<class T> friend double NormEstimate(std::vector<T>& states,
+          const std::vector< std::complex<double> >& phases, 
+          const std::vector<uint_t>& Samples_d1,
+          const std::vector<uint_t> &Samples_d2, 
+          const std::vector< std::vector<uint_t> >& Samples,
+          int n_threads);
 
   #ifdef CATCH_VERSION_MAJOR //Helper 
-  template<class T> friend scalar_t test_inner_product(T &state, uint_t &sample_1, uint_t &sample_2,
-        std::vector<uint_t> &sample);
+  scalar_t test_inner_product(uint_t &sample_1, uint_t &sample_2, std::vector<uint_t> &sample);
   #endif
 
 private:
