@@ -552,8 +552,8 @@ TEST_CASE("A simple one.")
 
 int main( int argc, char* argv[] ) {
   time_t t;
-  unsigned seed = (unsigned) time(&t);
-  // unsigned seed = 1548156369;
+  // unsigned seed = (unsigned) time(&t);
+  unsigned seed = 1549474963;
   std::cout << "Initialized with seed: " << seed << std::endl;
   srand(seed);
 
