@@ -417,34 +417,35 @@ TEST_CASE("Test CX gate")
         dch.X(9);
         ch.CX(control, 9);
         dch.CX(control, 9);
+        ch.CX(control, 9);
+        dch.CX(control, 9);
         REQUIRE(check_states(ch, dch));
         // Check trivial CX
         ch.CX(8, control);
         dch.CX(8, control);
         REQUIRE(check_states(ch, dch));
     }
-    // SECTION("Check phases")
-    // {
-    //     StabilizerState ch(n_qubits);
-    //     DCHStabilizer dch(n_qubits);
-    //     unsigned target = (rand()%7)+2;
-    //     INFO("Target was " << target);
-    //     ch.S(target);
-    //     dch.S(target);
-    //     ch.CZ(1, target);
-    //     dch.CZ(1, target);
-    //     ch.CX(1, target);
-    //     dch.CX(1, target);
-    //     dch.CX(0, target);
-    //     REQUIRE(check_states(ch, dch));
-    //     std::vector<uint_t> M = dch.MMatrix();
-    //     uint_t M_diag1 = dch.MDiag1();
-    //     uint_t M_diag2 = dch.MDiag2();
-    //     unsigned control_phase = ((M_diag1 >> 1) & one) + 2 * ((M_diag2 >> 1) & one);
-    //     REQUIRE(control_phase == 3);
-    //     REQUIRE(!!(M[0] & (one << 1)));
-    //     REQUIRE(!!(M_diag1 & one));
-    // }
+    SECTION("Check phases")
+    {
+        StabilizerState ch(n_qubits);
+        DCHStabilizer dch(n_qubits);
+        unsigned target = (rand()%7)+2;
+        INFO("Target was " << target);
+        ch.S(target);
+        dch.S(target);
+        ch.CZ(1, target);
+        dch.CZ(1, target);
+        ch.CX(1, target);
+        dch.CX(1, target);
+        dch.CX(0, target);
+        REQUIRE(check_states(ch, dch));
+        std::vector<uint_t> M = dch.MMatrix();
+        uint_t M_diag1 = dch.MDiag1();
+        uint_t M_diag2 = dch.MDiag2();
+        unsigned control_phase = ((M_diag1 >> 1) & one) + 2 * ((M_diag2 >> 1) & one);
+        REQUIRE(control_phase == 3);
+        REQUIRE(!!(M_diag1 & one));
+    }
 }
 
 TEST_CASE("Random Deterministic Circuit")
@@ -533,7 +534,7 @@ scalar_t DCHStabilizer::test_inner_product(uint_t &sample_1, uint_t &sample_2,
     return amp;
 }
 
-TEST_CASE("A simple one.")
+TEST_CASE("Inner Product Test")
 {
     unsigned n_qubits = 10;
     StabilizerState ch(10);
@@ -541,19 +542,45 @@ TEST_CASE("A simple one.")
     random_circuit_verify(ch, dch, all_gates, 30);
     REQUIRE(check_states(ch, dch));
     uint_t ds_1 = zer, ds_2 = zer;
-    std::vector<uint_t> ds(n_qubits, zer);
-    scalar_t ch_amp = ch.test_inner_product(ds_1, ds_2, ds);
+    std::vector<uint_t> ds_ch(n_qubits, zer);
+    std::vector<uint_t> ds_dch(n_qubits, zer);
+    for(unsigned i=0; i<n_qubits; i++)
+    {
+        if(rand()%2)
+        {
+            ds_1 ^= (one << i);
+            ds_ch[i] ^= (one << i);
+        }
+        if(rand()%2)
+        {
+            ds_2 ^= (one << i);
+        }
+        for(unsigned j=i+1; j<n_qubits; j++)
+        {
+            if(rand()%2)
+            {
+                ds_ch[i] ^= (one << j);
+                ds_ch[j] ^= (one << i);
+                ds_dch[i] ^= (one << j);
+                ds_dch[j] ^= (one << i);
+            }
+        }
+    }
+    scalar_t ch_amp = ch.test_inner_product(ds_1, ds_2, ds_ch);
     ch_amp.Print();
     std::cout << std::endl;
-    scalar_t dch_amp = dch.test_inner_product(ds_1, ds_2, ds);
+    scalar_t dch_amp = dch.test_inner_product(ds_1, ds_2, ds_dch);
     dch_amp.Print();
     std::cout << std::endl;
+    REQUIRE(std::abs(std::real(dch_amp.to_complex())-std::real(ch_amp.to_complex())) == Approx(0.));
+    REQUIRE(std::abs(std::imag(dch_amp.to_complex())+std::imag(ch_amp.to_complex())) == Approx(0.));
 }
 
 int main( int argc, char* argv[] ) {
   time_t t;
-  // unsigned seed = (unsigned) time(&t);
-  unsigned seed = 1549474963;
+  unsigned seed = (unsigned) time(&t);
+  // unsigned seed = 1551981445;
+  // unsigned seed = 1551995579;
   std::cout << "Initialized with seed: " << seed << std::endl;
   srand(seed);
 

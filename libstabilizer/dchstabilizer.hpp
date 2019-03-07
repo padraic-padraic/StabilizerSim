@@ -2,8 +2,10 @@
 #define DCH_STABILIZER_HPP
 
 #include "core.hpp"
+#ifdef CATCH_VERSION_MAJOR
+#include <Eigen/Dense>
+#endif
 
-#include <algorithm>
 #include <vector>
 
 const char* dch_fnames[] = {"s", "v", "M", "M_diag", "G"};
@@ -106,7 +108,7 @@ private:
     //Update used for Hadamards and Measurement
     void UpdateSVector(uint_t t, uint_t u, unsigned b);
 
-    scalar_t InnerProduct(uint_t A_diag1, uint_t A_diag2, std::vector<uint_t> &A);
+    scalar_t InnerProduct(uint_t &A_diag1, uint_t &A_diag2, std::vector<uint_t> &A);
 };
 
 //-------------------------------//
@@ -153,9 +155,9 @@ void DCHStabilizer::CompBasisVector(uint_t x)
   s = x;
   M_diag1 = zer;
   M_diag2 = zer;
-  std::fill(M.begin(), M.end(), zer);
   for (unsigned i=0; i<n; i++)
   {
+    M[i] = zer;
     G[i] = (one << i);
     GT[i] = (one << i);
     G_inverse[i] = (one << i);
@@ -169,9 +171,9 @@ void DCHStabilizer::HadamardBasisVector(uint_t x)
   v = x;
   M_diag1 = zer;
   M_diag2 = zer;
-  std::fill(M.begin(), M.end(), zer);
   for (unsigned i=0; i<n; i++)
   {
+    M[i] = zer;
     G[i] = (one << i);
     G_inverse[i] = (one << i);
   }
@@ -232,22 +234,6 @@ void DCHStabilizer::H(unsigned target)
   q.Z ^= (one << target);
   CommutePauli(p);
   CommutePauli(q);
-  #ifdef CATCH_VERSION_MAJOR
-  // std::cout << "p.e: " << p.e << std::endl;
-  // std::cout << "p.X: ";
-  // Print(p.X, n);
-  // std::cout << std::endl;
-  // std::cout << "p.Z: ";
-  // Print(p.Z, n);
-  // std::cout << std::endl;
-  // std::cout << "q.e: " << q.e << std::endl;
-  // std::cout << "q.X: ";
-  // Print(q.X, n);
-  // std::cout << std::endl;
-  // std::cout << "q.Z: ";
-  // Print(q.Z, n);
-  // std::cout << std::endl;
-  #endif
   uint_t t = s^p.X;
   unsigned t_phase = (hamming_parity(t&p.Z) * 2U);
   t_phase += p.e;
@@ -697,7 +683,7 @@ void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
   omega.e=(omega.e  + e1) % 8;
 }
 
-scalar_t DCHStabilizer::InnerProduct(uint_t A_diag1, uint_t A_diag2, std::vector<uint_t> &A)
+scalar_t DCHStabilizer::InnerProduct(uint_t &A_diag1, uint_t &A_diag2, std::vector<uint_t> &A)
 {
     if(!isReadyGT)
     {
@@ -706,99 +692,73 @@ scalar_t DCHStabilizer::InnerProduct(uint_t A_diag1, uint_t A_diag2, std::vector
     std::vector<uint_t> placeholder(n, zer);
     std::vector<uint_t> B(n, zer);
     uint_t B_diag1 = zer, B_diag2 = zer;
-    uint_t placeholder_diag1=zer, placeholder_diag2=zer;
+    std::vector<uint_t> J(n, zer);
+    uint_t J_diag1 = zer, J_diag2 = zer;
     // Setup the matrix M-A, store it in B
-    // TODO: Do we need to use M-A? Flip 1s to 3s, then add...
+    // (M-A) == (M + A*) => Flip 1s of A to 3s, then add...
+    J_diag2 = (A_diag1 ^ A_diag2 ^ M_diag2 ^ (A_diag1 & M_diag1));
+    J_diag1 = (A_diag1 ^ M_diag1);
     for(unsigned i=0; i<n; i++)
     {
-        B[i] = M[i]^A[i];
+        J[i] = M[i]^A[i]; //M is symmetric, use a column.
+        J[i] ^= (J_diag1 & (one << i)); //Setup the ones on the diagonal
     }
-    B_diag2 = ((A_diag1  ^ A_diag2) ^ M_diag2 ^ (A_diag1 & M_diag1));
-    B_diag1 = (A_diag1 ^ M_diag1);
     //Compute (M-A)G^{T}
     for(unsigned i=0; i<n; i++)
     {
-        uint_t B_row = B[i]; //B is symmetric so grab a column
-        uint_t shift = (one << i);
-        for(unsigned j=0; j<n; j++)
-        {
-            if(j==i)
-            {
-                continue;
-            }
-            placeholder[j] ^= (hamming_parity(B_row & GT[j]) ^ (!!(GT[j]&B_diag1&shift))) * shift;
-        }
-        //Do the diagonal updates
-        unsigned diagonal = hamming_weight(B_row & GT[i])%4;
-        placeholder_diag1 ^= (!!(diagonal & 1U))*shift;
-        placeholder_diag2 ^= (!!(diagonal & 2U))*shift;
-        if(!!(GT[i] & shift))
-        {
-            placeholder_diag2 ^= ((B_diag1 & placeholder_diag1 & shift) ^ (B_diag2 & shift));
-            placeholder_diag1 ^= ((B_diag1 & shift));
-        }
+      uint_t J_row = J[i]; //(M-A) is symmetric so grab a column
+      uint_t shift = (one << i);
+      for(unsigned j=0; j<n; j++)
+      {
+        unsigned weight = hamming_weight(J_row&GT[j]);
+        placeholder[j] ^= ((weight & 1U) * shift);
+      }
     }
     // Compute B:= G*((M-A)G^{T})
     for(unsigned i=0; i<n; i++)
     {
-        uint_t G_row = GT[i];
-        uint_t shift = (one << i);
-        for(unsigned j=0; j<n; j++)
+      uint_t G_row = GT[i]; //(M-A) is symmetric so grab a column
+      uint_t shift = (one << i);
+      for(unsigned j=0; j<n; j++)
+      {
+        bool parity = hamming_parity(G_row&placeholder[j]);
+        B[j] ^= (parity * shift);
+      }
+      for(unsigned k=0; k<n; k++)
+      {
+        if((G[k]>>i)&one)
         {
-            if(j==i)
+          uint_t one_bit = (J_diag1 >> k) & one;
+          if ((B_diag1 >> i) & one_bit)
+          {
+              B_diag2 ^= shift;
+          }
+          B_diag1 ^= one_bit * shift;
+          B_diag2 ^= ((J_diag2 >> k) & one) * shift;
+          for (size_t l=k+1; l<n; l++)
+          {
+            if ((J[l] >> k) & (G[l] >> i) & one)
             {
-                continue;
+                B_diag2 ^= shift;
             }
-            if(hamming_parity(G_row & placeholder[j]) ^ !!(G_row&placeholder_diag1&(one << j)))
-            {
-                B[j] |= shift;
-            }
-            else
-            {
-                B[j] &= ~shift;
-            }
+          }
         }
-        //Do the diagonal updates
-        unsigned diagonal = hamming_weight(G_row & placeholder[i])%4;
-        //We need conditionals to properly write the bits of B_diag, which we previously used
-        // to store (M-A);
-        if(!!(diagonal & 1U))
-        {
-            B_diag1 |= shift;
-        }
-        else
-        {
-            B_diag1 &= (~shift);
-        }
-        if(!!(diagonal & 2U))
-        {
-            B_diag2 |= shift;
-        }
-        else
-        {
-            B_diag2 &= (~shift);
-        }
-        if(!!(GT[i] & shift))
-        {
-            B_diag2 ^= ((B_diag1 & placeholder_diag1 & shift)) ^ (placeholder_diag2 & shift);
-            B_diag1 ^= ((placeholder_diag1 & shift));
-        }
+      }
     }
     //Setup the quadratic form to evaluate the exponential sum
-    uint_t s0 = s&(~v);
     QuadraticForm q(hamming_weight(v));
-    q.Q = 0;
+    q.Q = 4*(hamming_parity(s&v));
     unsigned col = 0;
     for(unsigned i=0; i<n; i++)
     {
       uint_t i_shift = (one << i);
-      if(!!(s&i_shift))
+      if(!!(s & i_shift))
       {
         q.Q = (q.Q + (!!(B_diag1 & i_shift))*2)%8;
-        q.Q = (q.Q + (!!(B_diag2 & i_shift))*4)%8;
+        q.Q ^= (!!(B_diag2 & i_shift))*4;
         for(unsigned j=i+1; j<n; j++)
         {
-          if(!!(s & B[i] & (one << j)))
+          if((s >> j) & (B[j] >> i) & one)
           {
             q.Q ^= 4;
           }
@@ -807,17 +767,12 @@ scalar_t DCHStabilizer::InnerProduct(uint_t A_diag1, uint_t A_diag2, std::vector
       if (!!(v&i_shift))
       {
         uint_t col_shift = (one << col);
-        q.D1 ^= (!!(B_diag1 & i_shift))*col_shift;
+        q.D1 ^= (!!(B_diag1 & i_shift)) * col_shift;
         q.D2 ^= (!!((B_diag2 ^ s) & i_shift) ^ hamming_parity(B[i]&s)) * col_shift;
         unsigned row=0;
         for(unsigned j=0; j<n; j++)
         {
-            if(i==j)
-            {
-                row++;
-                continue;
-            }
-            if(!!(v&(one <<j)))
+            if(!!(v&(one << j)))
             {
               q.J[col] |= (!!(B[i]&(one << j)))*(one << row);
               row++;
@@ -827,7 +782,7 @@ scalar_t DCHStabilizer::InnerProduct(uint_t A_diag1, uint_t A_diag2, std::vector
       }
     }
     scalar_t amp = q.ExponentialSum();
-    amp.p -= (n+hamming_weight(v));
+    amp.p -= (n+q.n);
     amp *= omega;
     return amp;
 }

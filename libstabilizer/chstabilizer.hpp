@@ -163,10 +163,6 @@ typedef std::complex<double> cdouble;
 // Implementation                //
 //-------------------------------//
 
-//Lookup table for e^(i pi m / 4)
-static const int RE_PHASE[8] = {1, 1, 0, -1, -1, -1, 0, 1};
-static const int IM_PHASE[8] = {0, 1, 1, 1, 0, -1, -1, -1};
-
 // Clifford simulator based on the CH-form for for n<=64 qubits
 
 StabilizerState::StabilizerState(const unsigned n_qubits):
@@ -904,7 +900,6 @@ scalar_t StabilizerState::InnerProduct(const uint_t& A_diag1,
     {
         J[i] ^= A[i];
     }
-    //placeholder = J*G)
     for (size_t i=0; i<n; i++)
     {
         //Grab column i of J, it's symmetric
@@ -996,7 +991,7 @@ scalar_t StabilizerState::InnerProduct(const uint_t& A_diag1,
     }
     scalar_t amp = q.ExponentialSum();
     // Reweight by 2^{-(n+|v|)}/2
-    amp.p -= (n+hamming_weight(v));
+    amp.p -= (n+q.n);
     // We need to further multiply by omega*
     scalar_t psi_amp(omega);
     psi_amp.conjugate();
