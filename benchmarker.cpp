@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <map>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -159,7 +160,7 @@ template<class T> void random_circuit(T &state, std::vector<Gate> &gates, unsign
   }
 }
 
-unsigned DEFAULT_REPETITIONS = 1000000;
+unsigned DEFAULT_REPETITIONS = 100000;
 
 enum class Representation
 {
@@ -230,9 +231,9 @@ template<class T> std::chrono::duration<double> benchmark_op(T &state, unsigned 
 
 int main(int argc, char* argv[])
 {
-  if(argc < 3)
+  if(argc < 4)
   {
-      throw std::runtime_error("Expected at least three arguments: simulator, operation, and beta.");
+      throw std::runtime_error("Expected at least four arguments: simulator, operation, beta, and an output file name.");
   }
   std::string sim_name = argv[1];
   auto sim = rep_names.find(sim_name);
@@ -243,6 +244,10 @@ int main(int argc, char* argv[])
   std::string op_string = argv[2];
   double beta = std::stod(argv[3]);
   std::cout << "Running with Simulator: " << sim_name << " and beta: " << beta << std::endl;
+  std::ofstream output_data;
+  std::string out_name = argv[4];
+  output_data.open(out_name);
+  output_data << "Num Qubits \t Average Operation Time\n";
   for(unsigned n=5; n<62; n++)
   {
     std::cout << n << " qubits run." << std::endl;
@@ -312,5 +317,8 @@ int main(int argc, char* argv[])
       }
     }
     std::cout << "Cumulative time: " << sum_time.count() << "Average: " << sum_time.count()/DEFAULT_REPETITIONS << std::endl; 
+    output_data << n << "\t" << sum_time.count()/DEFAULT_REPETITIONS << "\n";
   }
+  output_data.close();
+  return 0;
 }
