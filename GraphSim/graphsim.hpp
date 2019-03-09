@@ -80,8 +80,6 @@ struct QState
    long over32; // floor(n/8)+1
 }; 
 
-//forward declarations, definition in graphsim.h:
-
 typedef unsigned long VertexIndex;
 struct QubitVertex;
 class GraphRegister;
@@ -688,11 +686,11 @@ Stabilizer::Stabilizer (const GraphRegister& gr,
    // Build the graph adjacency matrix with Z's and X's in the diagonal
    // and apply the local Clifford unitaries:
    int in = 0;
-   for (VtxIdxIter i = qubits.begin(); i != qubits.end(); i++, in++) {
+   for (VtxIdxIterConst i = qubits.begin(); i != qubits.end(); i++, in++) {
       rowsigns[in] = RightPhase (0);
      vtxidx[in] = *i;
       int jn = 0;
-      for (VtxIdxIter j = qubits.begin(); j != qubits.end(); j++, jn++) {
+      for (VtxIdxIterConst j = qubits.begin(); j != qubits.end(); j++, jn++) {
          if (i==j) {
             paulis[in][jn] = lco_X;
          } else {
