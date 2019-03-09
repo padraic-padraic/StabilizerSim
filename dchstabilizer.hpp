@@ -2,9 +2,6 @@
 #define DCH_STABILIZER_HPP
 
 #include "core.hpp"
-#ifdef CATCH_VERSION_MAJOR
-#include <Eigen/Dense>
-#endif
 
 #include <vector>
 
@@ -13,13 +10,13 @@ const char* dch_fnames[] = {"s", "v", "M", "M_diag", "G"};
 namespace StabilizerSimulator
 {
 
-class DCHStabilizer
+class DCHState
 {
 public:
     // Construct DCH Stabilizer corresponding to |0>^{\otimes n}
-    DCHStabilizer(unsigned n_qubits);
+    DCHState(unsigned n_qubits);
     //Copy constructor
-    DCHStabilizer(const DCHStabilizer& rhs);
+    DCHState(const DCHState& rhs);
 
      uint_t NQubits() const
       {
@@ -115,7 +112,7 @@ private:
 // Implementation                //
 //-------------------------------//
 
-DCHStabilizer::DCHStabilizer(unsigned n_qubits) :
+DCHState::DCHState(unsigned n_qubits) :
 n(n_qubits),
 s(zer),
 v(zer),
@@ -136,7 +133,7 @@ isReadyGT(true)
   }
 };
 
-DCHStabilizer::DCHStabilizer(const DCHStabilizer& rhs) :
+DCHState::DCHState(const DCHState& rhs) :
 n(rhs.n),
 s(rhs.s),
 v(rhs.v),
@@ -150,7 +147,7 @@ isReadyGT(rhs.isReadyGT)
 {
 };
 
-void DCHStabilizer::CompBasisVector(uint_t x)
+void DCHState::CompBasisVector(uint_t x)
 {
   s = x;
   M_diag1 = zer;
@@ -165,7 +162,7 @@ void DCHStabilizer::CompBasisVector(uint_t x)
   isReadyGT = true;
 }
 
-void DCHStabilizer::HadamardBasisVector(uint_t x)
+void DCHState::HadamardBasisVector(uint_t x)
 {
   s = zer;
   v = x;
@@ -180,7 +177,7 @@ void DCHStabilizer::HadamardBasisVector(uint_t x)
   isReadyGT = false;
 }
 
-void DCHStabilizer::S(unsigned target)
+void DCHState::S(unsigned target)
 {
   // Add one to M_{ii}
   uint_t shift = (one << target);
@@ -188,7 +185,7 @@ void DCHStabilizer::S(unsigned target)
   M_diag1 ^= shift;
 }
 
-void DCHStabilizer::Sdag(unsigned target)
+void DCHState::Sdag(unsigned target)
 {
   //Add three to M_{ii}
   // 0 + 3 = 3; => 00 + 11 = 11;
@@ -201,13 +198,13 @@ void DCHStabilizer::Sdag(unsigned target)
   M_diag1 ^= (one << target);
 }
 
-void DCHStabilizer::Z(unsigned target)
+void DCHState::Z(unsigned target)
 {
   //Add two to M_{ii}
   M_diag2 ^= (one << target);
 }
 
-void DCHStabilizer::X(unsigned target)
+void DCHState::X(unsigned target)
 {
   pauli_t p;
   p.X ^= (one << target);
@@ -218,14 +215,14 @@ void DCHStabilizer::X(unsigned target)
   omega.e = omega.e % 8;
 }
 
-void DCHStabilizer::Y(unsigned target)
+void DCHState::Y(unsigned target)
 {
   X(target);
   Z(target);
   omega.e = (omega.e + 6) % 8;
 }
 
-void DCHStabilizer::H(unsigned target)
+void DCHState::H(unsigned target)
 {
   // Represent H_{a} = \frac{1}{2}\left(X_{a} + Z_{a}\right)
   // std::cout << "Hadamard on qubit " << target << std::endl;
@@ -279,7 +276,7 @@ void DCHStabilizer::H(unsigned target)
   }
 }
 
-void DCHStabilizer::CZ(unsigned control, unsigned target)
+void DCHState::CZ(unsigned control, unsigned target)
 {
   if(control == target)
   {
@@ -289,7 +286,7 @@ void DCHStabilizer::CZ(unsigned control, unsigned target)
   M[control] ^= (one << target);
 }
 
-void DCHStabilizer::CX(unsigned control, unsigned target)
+void DCHState::CX(unsigned control, unsigned target)
 {
   if(control == target)
   {
@@ -329,7 +326,7 @@ void DCHStabilizer::CX(unsigned control, unsigned target)
   G[target] ^= G[control];
 }
 
-scalar_t DCHStabilizer::Amplitude(uint_t x)
+scalar_t DCHState::Amplitude(uint_t x)
 {
   scalar_t amp;
   if(omega.eps == 0)
@@ -356,7 +353,7 @@ scalar_t DCHStabilizer::Amplitude(uint_t x)
   return amp;
 }
 
-void DCHStabilizer::MeasurePauli(pauli_t P)
+void DCHState::MeasurePauli(pauli_t P)
 {
   CommutePauli(P);
   unsigned b = P.e;
@@ -366,7 +363,7 @@ void DCHStabilizer::MeasurePauli(pauli_t P)
   UpdateSVector(s, u, b);
 }
 
-void DCHStabilizer::MeasurePauliProjector(std::vector<pauli_t>& generators)
+void DCHState::MeasurePauliProjector(std::vector<pauli_t>& generators)
 {
   for (uint_t i=0; i<generators.size(); i++)
   {
@@ -382,7 +379,7 @@ void DCHStabilizer::MeasurePauliProjector(std::vector<pauli_t>& generators)
 // Implementation - private methods //
 //----------------------------------//
 
-void DCHStabilizer::TransposeG()
+void DCHState::TransposeG()
 {
   for (unsigned i=0; i<n; i++)
   {
@@ -400,7 +397,7 @@ void DCHStabilizer::TransposeG()
   isReadyGT = true;
 }
 
-void DCHStabilizer::CommutePauliDC(pauli_t &p)
+void DCHState::CommutePauliDC(pauli_t &p)
 {
   unsigned phase = 0;
   if(p.X)
@@ -437,7 +434,7 @@ void DCHStabilizer::CommutePauliDC(pauli_t &p)
   p.Z = z_temp;
 }
 
-void DCHStabilizer::CommutePauli(pauli_t& p)
+void DCHState::CommutePauli(pauli_t& p)
 {
   CommutePauliDC(p);
   uint_t x_temp = p.X;
@@ -448,7 +445,7 @@ void DCHStabilizer::CommutePauli(pauli_t& p)
   p.Z = (x_temp & v) ^ (z_temp & (~v));
 }
 
-void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
+void DCHState::UpdateSVector(uint_t t, uint_t u, unsigned b)
 {
   // std::cout << "Howdy from inside updateSvector!" << std::endl;
   b %= 4;
@@ -683,7 +680,7 @@ void DCHStabilizer::UpdateSVector(uint_t t, uint_t u, unsigned b)
   omega.e=(omega.e  + e1) % 8;
 }
 
-scalar_t DCHStabilizer::InnerProduct(uint_t &A_diag1, uint_t &A_diag2, std::vector<uint_t> &A)
+scalar_t DCHState::InnerProduct(uint_t &A_diag1, uint_t &A_diag2, std::vector<uint_t> &A)
 {
     if(!isReadyGT)
     {

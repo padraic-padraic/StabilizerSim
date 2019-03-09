@@ -13,13 +13,13 @@
 namespace StabilizerSimulator
 {
 // Clifford simulator based on the CH-form 
-class StabilizerState
+class CHState
 {
 public:
   // constructor creates basis state |phi>=|00...0> 
-  StabilizerState(const unsigned n_qubits);
+  CHState(const unsigned n_qubits);
   //Copy constructor
-  StabilizerState(const StabilizerState& rhs);
+  CHState(const CHState& rhs);
   // n = number of qubits
   // qubits are numbered as q=0,1,...,n-1
 
@@ -165,7 +165,7 @@ typedef std::complex<double> cdouble;
 
 // Clifford simulator based on the CH-form for for n<=64 qubits
 
-StabilizerState::StabilizerState(const unsigned n_qubits):
+CHState::CHState(const unsigned n_qubits):
 n(n_qubits), // number of qubits
 gamma1(zer),
 gamma2(zer),
@@ -195,7 +195,7 @@ isReadyMT(false)
   omega.makeOne();
 }
 
-StabilizerState::StabilizerState(const StabilizerState& rhs):
+CHState::CHState(const CHState& rhs):
 n(rhs.n), // number of qubits
 gamma1(rhs.gamma1),
 gamma2(rhs.gamma2),
@@ -212,7 +212,7 @@ isReadyMT(rhs.isReadyMT)
 {
 }
 
-void StabilizerState::CompBasisVector(uint_t x)
+void CHState::CompBasisVector(uint_t x)
 {
   s=x;
   v=zer;
@@ -230,7 +230,7 @@ void StabilizerState::CompBasisVector(uint_t x)
   isReadyMT=false;
 }
 
-void StabilizerState::HadamardBasisVector(uint_t x)
+void CHState::HadamardBasisVector(uint_t x)
 {
   s=zer;
   v=x;
@@ -248,7 +248,7 @@ void StabilizerState::HadamardBasisVector(uint_t x)
   isReadyMT=false;
 }
 
-void StabilizerState::RightS(unsigned q)
+void CHState::RightS(unsigned q)
 {
   isReadyMT=false;// we are going to change M
   M[q]^=F[q];
@@ -257,7 +257,7 @@ void StabilizerState::RightS(unsigned q)
   gamma1^=F[q];
 }
 
-void StabilizerState::RightSdag(unsigned q)
+void CHState::RightSdag(unsigned q)
 {
   isReadyMT=false;// we are going to change M
   M[q]^=F[q];
@@ -266,13 +266,13 @@ void StabilizerState::RightSdag(unsigned q)
   gamma2^=F[q]^(gamma1 & F[q]);
 }
 
-void StabilizerState::RightZ(unsigned q)
+void CHState::RightZ(unsigned q)
 {
   // update phase vector: gamma[p] gets gamma[p] + 2F_{p,q} (mod 4)   for all p
   gamma2^=F[q];
 }
 
-void StabilizerState::S(unsigned q)
+void CHState::S(unsigned q)
 {
   isReadyMT=false;// we are going to change M
   uint_t C=(one<<q);
@@ -285,7 +285,7 @@ void StabilizerState::S(unsigned q)
   gamma2^=((gamma1 >> q) & one )*C;
 }
 
-void StabilizerState::Sdag(unsigned q)
+void CHState::Sdag(unsigned q)
 {
   isReadyMT=false;// we are going to change M
   uint_t C=(one<<q);
@@ -298,13 +298,13 @@ void StabilizerState::Sdag(unsigned q)
   gamma1^=C;
 }
 
-void StabilizerState::Z(unsigned q)
+void CHState::Z(unsigned q)
 {
   // update phase vector:  gamma[q] gets gamma[q] + 2
   gamma2^=(one<<q);
 }
 
-void StabilizerState::X(unsigned q)
+void CHState::X(unsigned q)
 {
   //Commute the Pauli through UC
   if (!isReadyMT)
@@ -333,7 +333,7 @@ void StabilizerState::X(unsigned q)
   omega.e = (omega.e + phase)%8;
 }
 
-void StabilizerState::Y(unsigned q)
+void CHState::Y(unsigned q)
 {
   Z(q);
   X(q);
@@ -341,7 +341,7 @@ void StabilizerState::Y(unsigned q)
   omega.e = (omega.e + 2)%8;
 }
 
-void StabilizerState::RightCX(unsigned q, unsigned r)
+void CHState::RightCX(unsigned q, unsigned r)
 {
   if(q == r)
   {
@@ -354,7 +354,7 @@ void StabilizerState::RightCX(unsigned q, unsigned r)
   M[q]^=M[r];
 }
 
-void StabilizerState::CX(unsigned q, unsigned r)
+void CHState::CX(unsigned q, unsigned r)
 {
   if(q == r)
   {
@@ -381,7 +381,7 @@ void StabilizerState::CX(unsigned q, unsigned r)
   if (b) gamma2^=C;
 }
 
-void StabilizerState::RightCZ(unsigned q, unsigned r)
+void CHState::RightCZ(unsigned q, unsigned r)
 {
   if(q == r)
   {
@@ -393,7 +393,7 @@ void StabilizerState::RightCZ(unsigned q, unsigned r)
   gamma2^=(F[q] & F[r]);
 }
 
-void StabilizerState::CZ(unsigned q, unsigned r)
+void CHState::CZ(unsigned q, unsigned r)
 {
   if(q == r)
   {
@@ -409,7 +409,7 @@ void StabilizerState::CZ(unsigned q, unsigned r)
   }
 }
 
-pauli_t StabilizerState::GetPauliX(uint_t x)
+pauli_t CHState::GetPauliX(uint_t x)
 {
   // make sure that M-transposed and F-transposed have been already computed
   if (!isReadyMT)
@@ -437,7 +437,7 @@ pauli_t StabilizerState::GetPauliX(uint_t x)
  return R;
 }
 
-scalar_t StabilizerState::Amplitude(uint_t x)
+scalar_t CHState::Amplitude(uint_t x)
 {
   // compute transposed matrices if needed
   if (!isReadyMT)
@@ -494,7 +494,7 @@ scalar_t StabilizerState::Amplitude(uint_t x)
   return amp;
 }
 
-scalar_t StabilizerState::ProposeFlip(unsigned flip_pos)
+scalar_t CHState::ProposeFlip(unsigned flip_pos)
 {
   // Q gets Pauli operator U_C^{-1} X_{flip_pos} U_C
   Q.e=1*((gamma1>>flip_pos) & one);
@@ -548,7 +548,7 @@ scalar_t StabilizerState::ProposeFlip(unsigned flip_pos)
   return amp;
 }
 
-uint_t StabilizerState::Sample()
+uint_t CHState::Sample()
 {
   uint_t x=zer;
   for (unsigned q=0; q<n; q++)
@@ -560,7 +560,7 @@ uint_t StabilizerState::Sample()
   return x;
 }
 
-uint_t StabilizerState::Sample(uint_t v_mask)
+uint_t CHState::Sample(uint_t v_mask)
 {
   //v_mask is a uniform random binary string we use to sample the bits
   //of v in a single step.
@@ -576,7 +576,7 @@ uint_t StabilizerState::Sample(uint_t v_mask)
 }
 
 
-void StabilizerState::TransposeF()
+void CHState::TransposeF()
 {
   for (unsigned p=0; p<n; p++) // look at p-th row of F
   {
@@ -589,7 +589,7 @@ void StabilizerState::TransposeF()
   isReadyFT = true;
 }
 
-void StabilizerState::TransposeM()
+void CHState::TransposeM()
 {
   for (unsigned p=0; p<n; p++) // look at p-th row of M
   {
@@ -602,7 +602,7 @@ void StabilizerState::TransposeM()
   isReadyMT = true;
 }
 
-void StabilizerState::UpdateSvector(uint_t t, uint_t u, unsigned b)
+void CHState::UpdateSvector(uint_t t, uint_t u, unsigned b)
 {
 // take care of the trivial case: t=u
     if (t==u)  // multiply omega by (1+i^b)/sqrt(2)
@@ -755,7 +755,7 @@ void StabilizerState::UpdateSvector(uint_t t, uint_t u, unsigned b)
 
 
 
-void StabilizerState::H(unsigned q)
+void CHState::H(unsigned q)
 {
     isReadyMT=false;// we are going to change M and F
     isReadyFT=false;
@@ -807,7 +807,7 @@ void StabilizerState::H(unsigned q)
 
 }
 
-void StabilizerState::MeasurePauli(pauli_t PP)
+void CHState::MeasurePauli(pauli_t PP)
 {
     // compute Pauli R = U_C^{-1} P U_C
     pauli_t R;
@@ -852,7 +852,7 @@ void StabilizerState::MeasurePauli(pauli_t PP)
     isReadyFT=false;
 }
 
-void StabilizerState::MeasurePauliProjector(const std::vector<pauli_t>& generators)
+void CHState::MeasurePauliProjector(const std::vector<pauli_t>& generators)
 //Measure generators of a projector.
 {
     for (uint_t i=0; i<generators.size(); i++)
@@ -865,7 +865,7 @@ void StabilizerState::MeasurePauliProjector(const std::vector<pauli_t>& generato
     }
 }
 
-scalar_t StabilizerState::InnerProduct(const uint_t& A_diag1,
+scalar_t CHState::InnerProduct(const uint_t& A_diag1,
                                        const uint_t& A_diag2,
                                        const std::vector<uint_t>& A)
 {
