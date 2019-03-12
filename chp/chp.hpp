@@ -70,6 +70,53 @@ void error(int k)
 
 
 
+void z(struct QState *q, long b)
+{
+    long i;
+    long b5;
+    unsigned long pwb;
+
+    b5 = b>>5;
+    pwb = q->pw[b&31];
+    for(i=0; i<2*q->n; i++)
+    {
+        if(q->x[i][b5] & pwb) q->r[i] = (q->r[i] +2)%4;
+    }
+}
+
+
+
+void x(struct QState *q, long b)
+{
+    long i;
+    long b5;
+    unsigned long pwb;
+
+    b5 = b>>5;
+    pwb = q->pw[b&31];
+    for(i=0; i<2*q->n; i++)
+    {
+        if(q->z[i][b5] & pwb) q->r[i] = (q->r[i] +2)%4;
+    }
+}
+
+
+void y(struct QState *q, long b)
+{
+    long i;
+    long b5;
+    unsigned long pwb;
+
+    b5 = b>>5;
+    pwb = q->pw[b&31];
+    for(i=0; i<2*q->n; i++)
+    {
+        if (!((q->x[i][b5] & pwb) && (q->z[i] & pwb))) q->r[i] = (q->r[i] +2)%4;
+    }
+}
+
+
+
 void cnot(struct QState *q, long b, long c)
 
 // Apply a CNOT gate with control b and target c
@@ -462,7 +509,6 @@ long innerprod(struct QState *q1, struct QState *q2)
 // Otherwise, returns a nonnegative integer s such that the inner product is (1/sqrt(2))^s
 
 {
-
 	return 0;
 
 }

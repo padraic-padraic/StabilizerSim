@@ -160,7 +160,7 @@ template<class T> void random_circuit(T &state, std::vector<Gate> &gates, unsign
   }
 }
 
-unsigned DEFAULT_REPETITIONS = 100000;
+unsigned DEFAULT_REPETITIONS = 1000;
 
 enum class Representation
 {
