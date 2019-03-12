@@ -53,6 +53,51 @@ public:
     return M;
   }
 
+  void SetOmega(const scalar_t omega_)
+  {
+    omega = omega_;
+  }
+  void SetGamma1(const uint_t gamma1_)
+  {
+    gamma1 = gamma1_;
+  }
+  void SetGamma2(const uint_t gamma2_)
+  {
+    gamma2 = gamma2_;
+  }
+  void SetG(const std::vector<uint_t>& G_)
+  {
+    if(G.size() != G_.size())
+    {
+      throw std::runtime_error("Cannot change the size of CHState.");
+    }
+    for(unsigned i=0; i<n; i++)
+    {
+      G[i] = G_[i];
+    }
+  }
+  void SetF(const std::vector<uint_t>& F_)
+  {
+    if(F.size() != F_.size())
+    {
+      throw std::runtime_error("Cannot change the size of CHState.");
+    }
+    for(unsigned i=0; i<n; i++)
+    {
+      F[i] = F_[i];
+    }
+  }
+  void SetM(const std::vector<uint_t>& M_)
+  {
+    if(M.size() != M_.size())
+    {
+      throw std::runtime_error("Cannot change the size of CHState.");
+    }
+    for(unsigned i=0; i<n; i++)
+    {
+      M[i] = M_[i];
+    }
+  }
 
   // Clifford gates
   void CX(unsigned q, unsigned r); // q=control, r=target
@@ -83,7 +128,7 @@ public:
   
   //InnerProduct & Norm Estimation
   scalar_t InnerProduct(const uint_t& A_diag1, const uint_t& A_diag2, const std::vector<uint_t>& A);
-  
+  scalar_t InnerProduct(CHState& other);
   // Metropolis updates:
   // To initialize Metropolis by a state x call Amplitude(x)
   scalar_t ProposeFlip(unsigned flip_pos); // returns the amplitude <x'|phi> 
@@ -997,6 +1042,132 @@ scalar_t CHState::InnerProduct(const uint_t& A_diag1,
     psi_amp.conjugate();
     amp *= psi_amp;
     return amp;
+}
+
+scalar_t CHState::InnerProduct(CHState& other)
+{
+  if(other.n != n)
+  {
+    throw std::runtime_error("CHState::InnerProduct: Cannot compute inner "
+                           + "product between states with different numbers "
+                           + "of qubits.");
+  }
+  CHState *left, *right;
+  if(hamming_weight(other.v) < this->v)
+  {
+    left = &other;
+    right = this;
+  }
+  else
+  {
+    left = this;
+    right = &other;
+  }
+  //Setup combined tableau
+  std::vector<uint_t> combined_GT(n, zer);
+  std::vector<uint_t> combined_FT(n, zer);
+  std::vector<uint_t> combined_MT(n, zer);
+  uint_t combined_g1 = left->gamma1;
+  uint_t combined_g2 = left->gamma2;
+  if (!(left->isReadyFT))
+  {
+    left->TransposeF();
+  }
+  if (!(left->isReadyMT))
+  {
+    left->TransposeM();
+  }
+  //Update phase to conjugate the tableau of left
+  combined_g2 ^= left->gamma1;
+  for(unsigned i=0; i<n; i++)
+  {
+    combined_g2 ^= hamming_parity(left->FT[i] & left->MT[i])*(one << i);
+  }
+  std::vector<uint_t> rightGT(n, zer);
+  for(unsigned i=0; i<n; i++)
+  {
+    uint_t shift = (one << i);
+    for(unsigned j=0; j<n; j++)
+    {
+      if(!!(right->G[j] & shift))
+      {
+        rightGT[i] ^= (one << j);
+      }
+    }
+  }
+  //Compute combined tableau
+  for(unsigned i=0; i<n; i++)
+  {
+    uint_t shift = (one << i);
+    pauli_t X_out = right->GetPauliX(left->FT[i]);
+    combined_FT[i] = X_out.X;
+    combined_MT[i] = X_out.Z;
+    for(unsigned j=0; j<n; j++)
+    {
+      if(!!(left->G[j] & shift))
+      {
+        combined_GT[i] ^= rightGT[j];
+      }
+      if(!!(left->M[j] & shift))
+      {
+        combined_MT[i] ^= rightGT[j];
+      }
+    }
+    if(X_out.e & 2)
+    {
+      new_g2 ^= shift;
+    }
+    if(X_out.e & 1)
+    {
+      new_g2 ^= (new_g1&shift);
+      new_g1 ^= shift;
+    }
+  }
+  //Transpose and set
+  CHState ip_state(*right);
+  for(unsigned i=0; i<n; i++)
+  {
+    uint_t shift = (one << i);
+    for(unsigned j=0; j<n; j++)
+    {
+      if (!!(combined_GT[j] & shift))
+      {
+        ip_state.G[i] |= (one << j);
+      }
+      else
+      {
+        ip_state.G[i] &= ~(one << j);
+      }
+      if (!!(combined_FT[j] & shift))
+      {
+        ip_state.F[i] |= (one << j);
+      }
+      else
+      {
+        ip_state.F[i] &= ~(one << j);
+      }
+      if (!!(combined_MT[j] & shift))
+      {
+        ip_state.M[i] |= (one << j);
+      }
+      else
+      {
+        ip_state.M[i] &= ~(one << j);
+      }
+    }
+  }
+  for(unsigned i=0; i<n; i++)
+  {
+    if(!!(left->v & (one << i)))
+    {
+      ip_state.H(i);
+    }
+  }
+  scalar_t result = ip_state.Amplitude(left->s);
+  scalar_t left_amp = left->omega;
+  left_amp.conjugate();
+  result *= left_amp;
+  return result;
 }
 
 }

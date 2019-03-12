@@ -225,12 +225,13 @@ void DCHState::Y(unsigned target)
 void DCHState::H(unsigned target)
 {
   // Represent H_{a} = \frac{1}{2}\left(X_{a} + Z_{a}\right)
-  // std::cout << "Hadamard on qubit " << target << std::endl;
   pauli_t p, q;
   p.X ^= (one << target);
-  q.Z ^= (one << target);
   CommutePauli(p);
-  CommutePauli(q);
+  // Optimised commutation for the single Z pauli
+  q.Z ^= G[target];
+  q.X = (q.Z & v);
+  q.Z = (q.Z & (~v));
   uint_t t = s^p.X;
   unsigned t_phase = (hamming_parity(t&p.Z) * 2U);
   t_phase += p.e;
