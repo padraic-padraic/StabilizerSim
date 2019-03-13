@@ -1078,8 +1078,8 @@ scalar_t CHState::InnerProduct(CHState& other)
   CHState ip_state(*right);
   ip_state.isReadyMT = false;
   ip_state.isReadyFT = false;
-  ip_state.gamma1 = left_g1;
-  ip_state.gamma2 = left_g2;
+  ip_state.gamma1 = left->gamma1;
+  ip_state.gamma2 = left->gamma2;
   std::vector<uint_t> rightGT(n, zer);
   for(unsigned i=0; i<n; i++)
   {
@@ -1115,7 +1115,7 @@ scalar_t CHState::InnerProduct(CHState& other)
       }
       if(!!(left->M[j] & shift))
       {
-        ip_state._MT[i] ^= rightGT[j];
+        ip_state.MT[i] ^= rightGT[j];
       }
     }
     if(X_out.e & 2)
@@ -1142,7 +1142,7 @@ scalar_t CHState::InnerProduct(CHState& other)
       {
         ip_state.G[i] &= ~(one << j);
       }
-      if (!!(ipstate.FT[j] & shift))
+      if (!!(ip_state.FT[j] & shift))
       {
         ip_state.F[i] |= (one << j);
       }
@@ -1150,7 +1150,7 @@ scalar_t CHState::InnerProduct(CHState& other)
       {
         ip_state.F[i] &= ~(one << j);
       }
-      if (!!(ipstate.MT[j] & shift))
+      if (!!(ip_state.MT[j] & shift))
       {
         ip_state.M[i] |= (one << j);
       }

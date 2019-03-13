@@ -53,6 +53,12 @@ bool check_states(CHState &ch, DCHState &dch)
     return result;
 }
 
+template <class T> std::vector<complex_t> svector(T& state)
+{
+    uint_t dim = (one << state.n);
+
+}
+
 bool check_states(CHState &ch, CHState &ch2)
 {
     unsigned n = ch.NQubits();
@@ -387,13 +393,12 @@ TEST_CASE("Tableu combining")
     }
     CHECK(new_g1 == ch1.Gamma1());
     CHECK(new_g2 == ch1.Gamma2());
-}   
+}
 
 TEST_CASE("Conjugate Tableu combining")
 {
     unsigned n_qubits = 10;
     unsigned n_gates = 20;
-    CHState ch1(n_qubits);
     CHState ch2(n_qubits);
     uint_t x_string = zer;
     for(unsigned i=0; i<n_qubits; i++)
@@ -403,10 +408,11 @@ TEST_CASE("Conjugate Tableu combining")
             x_string ^= (one << i);
         }
     }
-    ch1.CompBasisVector(x_string);
     ch2.CompBasisVector(x_string);
-    random_circuit(ch1, c_gates);
     std::string circuit_2 = random_circuit(ch2, c_gates, n_gates);
+    std::cout << "===== SEQUENCE =====" << std::endl;
+    std::cout << circuit_2 << std::endl;
+    CHState ch1(ch2);
     std::vector<uint_t> left_G = ch2.GMatrix();
     std::vector<uint_t> left_F = ch2.FMatrix();
     std::vector<uint_t> left_M = ch2.MMatrix();
@@ -550,7 +556,7 @@ TEST_CASE("Conjugate Tableu combining")
         }
         auto end_pos = circuit_2.find_last_of(")");
         circuit_2.erase(start_pos+1);
-        apply_gate(ch1, found->second, control, target);
+        apply_gate(ch2, found->second, control, target);
     }
     CHECK(check_states(ch1, ch2));
 }
