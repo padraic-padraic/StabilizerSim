@@ -53,6 +53,30 @@ bool check_states(CHState &ch, DCHState &dch)
     return result;
 }
 
+bool check_states(CHState &ch, CHState &ch2)
+{
+    unsigned n = ch.NQubits();
+    uint_t dim = one << n;
+    bool result = true;
+    for(uint_t i=0; i<dim; i++)
+    {
+        scalar_t amp;
+        complex_t ch_amp, ch2_amp;
+        amp = ch.Amplitude(i);
+        ch_amp = amp.to_complex();
+        amp = ch2.Amplitude(i);
+        ch2_amp = amp.to_complex();
+        if(!complex_close(ch_amp, ch2_amp))
+        {
+            std::cout << ch_amp << " != " << ch2_amp << " for string ";
+            Print(i, n);
+            std::cout << std::endl;
+            result =  false;
+        }
+    }
+    return result;
+}
+
 //--------------------------------//
 // Generate random circuits       //
 //--------------------------------//
@@ -85,8 +109,24 @@ std::map<std::string, Gate> gate_enums(
   {"CX", Gate::CX}
 });
 
-template<class T> void apply_gate(T &state, Gate g, unsigned control, unsigned target)
+std::map<std::string, Gate> conjugate_enums( 
 {
+  {"X", Gate::X},
+  {"Y", Gate::Y},
+  {"Z", Gate::Z},
+  {"H", Gate::H},
+  {"S", Gate::Sdag},
+  {"Sdag", Gate::S},
+  {"CZ", Gate::CZ},
+  {"CX", Gate::CX}
+});
+
+template<class T> void apply_gate(T &state, Gate g, unsigned control, unsigned target, bool echo=false)
+{
+    if(echo)
+    {
+        std::cout << "Applying: " << gate_names[g] << "(" << control << "," << target << ")" << std::endl;
+    }
     switch (g)
     {
         case Gate::X:
@@ -332,7 +372,7 @@ TEST_CASE("Tableu combining")
         {
             control = std::stoul(circuit_2.substr(pos+1, 1));
         }
-        auto end_pos = circuit_2.find_first_of(")");
+        auto end_pos = circuit_2.find(")");
         circuit_2.erase(0, end_pos+1);
         apply_gate(ch1, found->second, control, target);
     }
@@ -349,6 +389,171 @@ TEST_CASE("Tableu combining")
     CHECK(new_g2 == ch1.Gamma2());
 }   
 
+TEST_CASE("Conjugate Tableu combining")
+{
+    unsigned n_qubits = 10;
+    unsigned n_gates = 20;
+    CHState ch1(n_qubits);
+    CHState ch2(n_qubits);
+    uint_t x_string = zer;
+    for(unsigned i=0; i<n_qubits; i++)
+    {
+        if(rand()%2)
+        {
+            x_string ^= (one << i);
+        }
+    }
+    ch1.CompBasisVector(x_string);
+    ch2.CompBasisVector(x_string);
+    random_circuit(ch1, c_gates);
+    std::string circuit_2 = random_circuit(ch2, c_gates, n_gates);
+    std::vector<uint_t> left_G = ch2.GMatrix();
+    std::vector<uint_t> left_F = ch2.FMatrix();
+    std::vector<uint_t> left_M = ch2.MMatrix();
+    std::vector<uint_t> left_FT(n_qubits, zer);
+    std::vector<uint_t> left_MT(n_qubits, zer);
+    uint_t left_g1 = ch2.Gamma1();
+    uint_t left_g2 = ch2.Gamma2();
+    std::vector<uint_t> right_G = ch1.GMatrix();
+    std::vector<uint_t> right_F = ch1.FMatrix();
+    std::vector<uint_t> right_M = ch1.MMatrix();    
+    std::vector<uint_t> right_GT(n_qubits, zer);
+    std::vector<uint_t> right_FT(n_qubits, zer);
+    std::vector<uint_t> right_MT(n_qubits, zer);
+    for(unsigned i=0; i<n_qubits; i++)
+    {
+        uint_t shift = (one << i);
+        for(unsigned j=0; j<n_qubits; j++)
+        {
+            if(!!(right_G[j] & shift))
+            {
+                right_GT[i] ^= (one << j);
+            }
+            if(!!(right_F[j] & shift))
+            {
+                right_FT[i] ^= (one << j);
+            }
+            if(!!(right_M[j] & shift))
+            {
+                right_MT[i] ^= (one << j);
+            }
+            if(!!(left_F[j] & shift))
+            {
+                left_FT[i] ^= (one << j);
+            }
+            if(!!(left_M[j] & shift))
+            {
+                left_MT[i] ^= (one << j);
+            }
+        }
+    }
+    uint_t right_g1 = ch1.Gamma1();
+    uint_t right_g2 = ch1.Gamma2();
+    std::vector<uint_t> new_GT(n_qubits, zer);
+    std::vector<uint_t> new_FT(n_qubits, zer);
+    std::vector<uint_t> new_MT(n_qubits, zer);
+    uint_t new_g1 = zer;
+    uint_t new_g2 = zer;
+    new_g2 = left_g2 ^ left_g1;
+    new_g1 = left_g1;
+    for(unsigned i=0; i<n_qubits; i++)
+    {
+        new_g2 ^= hamming_parity(left_FT[i]&left_MT[i])*(one << i);
+    }
+    for(unsigned i=0; i<n_qubits; i++)
+    {
+        uint_t shift = (one << i);
+        pauli_t X_out;
+        for(unsigned j=0; j<n_qubits; j++)
+        {
+            //Udpdate the Z stabilizers
+            if(!!(left_G[j] & shift))
+            {
+                new_GT[i] ^= right_GT[j];
+            }
+            if(!!(left_F[j] & shift))
+            {
+                pauli_t p;
+                p.e += 1*((right_g1>>j) & one);
+                p.e += 2*((right_g2>>j) & one);
+                p.X = right_FT[j];
+                p.Z = right_MT[j];
+                X_out *= p;
+            }
+        }
+        new_FT[i] = X_out.X;
+        new_MT[i] = X_out.Z;
+        for(unsigned j=0; j<n_qubits; j++)
+        {
+            if(!!(left_M[j] & shift))
+            {
+                new_MT[i] ^= right_GT[j];
+            }
+        }
+        if(X_out.e & 2)
+        {
+            new_g2 ^= shift;
+        }
+        if(X_out.e & 1)
+        {
+            new_g2 ^= (new_g1&shift);
+            new_g1 ^= shift;
+        }
+    }
+    std::vector<uint_t> new_G(n_qubits, zer);
+    std::vector<uint_t> new_M(n_qubits, zer);
+    std::vector<uint_t> new_F(n_qubits, zer);
+    for(unsigned i=0; i<n_qubits; i++)
+    {
+        for(unsigned j=0; j<n_qubits; j++)
+        {
+            if(!!(new_GT[i] & (one << j)))
+            {
+                new_G[j] ^= (one << i);
+            }
+            if(!!(new_FT[i] & (one << j)))
+            {
+                new_F[j] ^= (one << i);
+            }
+            if(!!(new_MT[i] & (one << j)))
+            {
+                new_M[j] ^= (one << i);
+            }            
+        }
+    }
+    ch2.SetG(new_G);
+    ch2.SetF(new_F);
+    ch2.SetM(new_M);
+    ch2.SetGamma1(new_g1);
+    ch2.SetGamma2(new_g2);
+    //Apply the sequence to right state
+    for(unsigned i=0; i<n_gates; i++)
+    {
+        auto pos = circuit_2.find_last_of("(");
+        auto start_pos = circuit_2.find_last_of(")", circuit_2.length()-2);
+        std::string gstr = circuit_2.substr(start_pos+1, pos-start_pos-1);
+        auto found = conjugate_enums.find(gstr);
+        if(found == conjugate_enums.end())
+        {
+            throw std::runtime_error("Couldn't find gate " + gstr);
+        }
+        unsigned control = 0, target = 0;
+        if(found->second == Gate::CX || found->second == Gate::CZ)
+        {
+            auto pos2 = circuit_2.find_last_of(",");
+            control = std::stoul(circuit_2.substr(pos2-1, 1));
+            target = std::stoul(circuit_2.substr(pos2+1, 1));
+        }
+        else
+        {
+            control = std::stoul(circuit_2.substr(pos+1, 1));
+        }
+        auto end_pos = circuit_2.find_last_of(")");
+        circuit_2.erase(start_pos+1);
+        apply_gate(ch1, found->second, control, target);
+    }
+    CHECK(check_states(ch1, ch2));
+}
 
 int main( int argc, char* argv[] ) {
   time_t t;
