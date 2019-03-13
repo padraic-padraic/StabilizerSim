@@ -1049,11 +1049,11 @@ scalar_t CHState::InnerProduct(CHState& other)
   if(other.n != n)
   {
     throw std::runtime_error("CHState::InnerProduct: Cannot compute inner "
-                           + "product between states with different numbers "
-                           + "of qubits.");
+                           "product between states with different numbers "
+                           "of qubits.");
   }
   CHState *left, *right;
-  if(hamming_weight(other.v) < this->v)
+  if(hamming_weight(other.v) < hamming_weight(this->v))
   {
     left = &other;
     right = this;
@@ -1065,10 +1065,6 @@ scalar_t CHState::InnerProduct(CHState& other)
   }
   //Setup combined tableau
   std::vector<uint_t> combined_GT(n, zer);
-  std::vector<uint_t> combined_FT(n, zer);
-  std::vector<uint_t> combined_MT(n, zer);
-  uint_t combined_g1 = left->gamma1;
-  uint_t combined_g2 = left->gamma2;
   if (!(left->isReadyFT))
   {
     left->TransposeF();
@@ -1077,15 +1073,18 @@ scalar_t CHState::InnerProduct(CHState& other)
   {
     left->TransposeM();
   }
-  //Update phase to conjugate the tableau of left
-  combined_g2 ^= left->gamma1;
-  for(unsigned i=0; i<n; i++)
-  {
-    combined_g2 ^= hamming_parity(left->FT[i] & left->MT[i])*(one << i);
-  }
+  //Get transposed G Matrix
+  //Zero out FT/MT to use as a scratch space
+  CHState ip_state(*right);
+  ip_state.isReadyMT = false;
+  ip_state.isReadyFT = false;
+  ip_state.gamma1 = left_g1;
+  ip_state.gamma2 = left_g2;
   std::vector<uint_t> rightGT(n, zer);
   for(unsigned i=0; i<n; i++)
   {
+    ip_state.FT[i] = zer;
+    ip_state.MT[i] = zer;
     uint_t shift = (one << i);
     for(unsigned j=0; j<n; j++)
     {
@@ -1095,13 +1094,19 @@ scalar_t CHState::InnerProduct(CHState& other)
       }
     }
   }
+  //Update phase to conjugate the tableau of left
+  ip_state.gamma2 ^= left->gamma1;
+  for(unsigned i=0; i<n; i++)
+  {
+    ip_state.gamma2 ^= hamming_parity(left->FT[i] & left->MT[i])*(one << i);
+  }
   //Compute combined tableau
   for(unsigned i=0; i<n; i++)
   {
     uint_t shift = (one << i);
     pauli_t X_out = right->GetPauliX(left->FT[i]);
-    combined_FT[i] = X_out.X;
-    combined_MT[i] = X_out.Z;
+    ip_state.FT[i] = X_out.X;
+    ip_state.MT[i] = X_out.Z;
     for(unsigned j=0; j<n; j++)
     {
       if(!!(left->G[j] & shift))
@@ -1110,21 +1115,20 @@ scalar_t CHState::InnerProduct(CHState& other)
       }
       if(!!(left->M[j] & shift))
       {
-        combined_MT[i] ^= rightGT[j];
+        ip_state._MT[i] ^= rightGT[j];
       }
     }
     if(X_out.e & 2)
     {
-      new_g2 ^= shift;
+      ip_state.gamma2 ^= shift;
     }
     if(X_out.e & 1)
     {
-      new_g2 ^= (new_g1&shift);
-      new_g1 ^= shift;
+      ip_state.gamma2 ^= (ip_state.gamma1&shift);
+      ip_state.gamma1 ^= shift;
     }
   }
   //Transpose and set
-  CHState ip_state(*right);
   for(unsigned i=0; i<n; i++)
   {
     uint_t shift = (one << i);
@@ -1138,7 +1142,7 @@ scalar_t CHState::InnerProduct(CHState& other)
       {
         ip_state.G[i] &= ~(one << j);
       }
-      if (!!(combined_FT[j] & shift))
+      if (!!(ipstate.FT[j] & shift))
       {
         ip_state.F[i] |= (one << j);
       }
@@ -1146,7 +1150,7 @@ scalar_t CHState::InnerProduct(CHState& other)
       {
         ip_state.F[i] &= ~(one << j);
       }
-      if (!!(combined_MT[j] & shift))
+      if (!!(ipstate.MT[j] & shift))
       {
         ip_state.M[i] |= (one << j);
       }
