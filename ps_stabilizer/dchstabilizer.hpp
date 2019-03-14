@@ -14,98 +14,100 @@ class DCHState
 {
 public:
     // Construct DCH Stabilizer corresponding to |0>^{\otimes n}
-    DCHState(unsigned n_qubits);
-    //Copy constructor
-    DCHState(const DCHState& rhs);
+  DCHState(unsigned n_qubits);
+  //Copy constructor
+  DCHState(const DCHState& rhs);
 
-     uint_t NQubits() const
-      {
-        return n;
-      }
-      scalar_t Omega() const
-      {
-        return omega;
-      }
+  uint_t NQubits() const
+  {
+    return n;
+  }
+  scalar_t Omega() const
+  {
+    return omega;
+  }
 
-      uint_t MDiag1() const
-      {
-        return M_diag1;
-      }
+  uint_t MDiag1() const
+  {
+    return M_diag1;
+  }
 
-      uint_t MDiag2() const
-      {
-        return M_diag2;
-      }
+  uint_t MDiag2() const
+  {
+    return M_diag2;
+  }
 
-      std::vector<uint_t> GMatrix() const
-      {
-        return G;
-      }
+  std::vector<uint_t> GMatrix() const
+  {
+    return G;
+  }
 
-      std::vector<uint_t> MMatrix() const
-      {
-        return M;
-      }
+  std::vector<uint_t> MMatrix() const
+  {
+    return M;
+  }
 
-    void CX(unsigned control, unsigned target);
-    void CZ(unsigned control, unsigned target);
-    void S(unsigned target);
-    void Sdag(unsigned target);
-    void Z(unsigned target);
-    void X(unsigned target);
-    void Y(unsigned target);
-    void H(unsigned target);
+  void CX(unsigned control, unsigned target);
+  void CZ(unsigned control, unsigned target);
+  void S(unsigned target);
+  void Sdag(unsigned target);
+  void Z(unsigned target);
+  void X(unsigned target);
+  void Y(unsigned target);
+  void H(unsigned target);
 
-    // state preps
-    void CompBasisVector(uint_t x); // prepares |x> 
-    void HadamardBasisVector(uint_t x); // prepares H(x)|00...0>
+  // state preps
+  void CompBasisVector(uint_t x); // prepares |x> 
+  void HadamardBasisVector(uint_t x); // prepares H(x)|00...0>
 
-    //Measurements
-    scalar_t Amplitude(uint_t x);
-    void MeasurePauli(pauli_t P); // applies a gate (I+P)/2 
-                                // where P is an arbitrary Pauli operator
-    void MeasurePauliProjector(std::vector<pauli_t>& generators);
+  //Measurements
+  scalar_t Amplitude(uint_t x);
+  void MeasurePauli(pauli_t P); // applies a gate (I+P)/2 
+                              // where P is an arbitrary Pauli operator
+  void MeasurePauliProjector(std::vector<pauli_t>& generators);
 
-    template<class T> friend double NormEstimate(std::vector<T>& states,
-            const std::vector< std::complex<double> >& phases, 
-            const std::vector<uint_t>& Samples_d1,
-            const std::vector<uint_t> &Samples_d2, 
-            const std::vector< std::vector<uint_t> >& Samples);
-    template<class T> friend double NormEstimate(std::vector<T>& states,
-            const std::vector< std::complex<double> >& phases, 
-            const std::vector<uint_t>& Samples_d1,
-            const std::vector<uint_t> &Samples_d2, 
-            const std::vector< std::vector<uint_t> >& Samples,
-            int n_threads);
+  scalar_t InnerProduct(DCHState& other);
 
-    #ifdef CATCH_VERSION_MAJOR //Helper 
-    void test_commute_pauli();
-    scalar_t test_inner_product(uint_t &sample_1, uint_t &sample_2,
-            std::vector<uint_t> &sample);
-    #endif
+  template<class T> friend double NormEstimate(std::vector<T>& states,
+          const std::vector< std::complex<double> >& phases, 
+          const std::vector<uint_t>& Samples_d1,
+          const std::vector<uint_t> &Samples_d2, 
+          const std::vector< std::vector<uint_t> >& Samples);
+  template<class T> friend double NormEstimate(std::vector<T>& states,
+          const std::vector< std::complex<double> >& phases, 
+          const std::vector<uint_t>& Samples_d1,
+          const std::vector<uint_t> &Samples_d2, 
+          const std::vector< std::vector<uint_t> >& Samples,
+          int n_threads);
+
+  #ifdef CATCH_VERSION_MAJOR //Helper 
+  void test_commute_pauli();
+  scalar_t test_inner_product(uint_t &sample_1, uint_t &sample_2,
+          std::vector<uint_t> &sample);
+  #endif
 
 private:
-    unsigned n; //N Qubits
-    uint_t s; //Computational basis string |s>
-    uint_t v; //Hadamard string: U_{H}|s> = H(v)|s>
-    std::vector<uint_t> G; // CNOT matrix G: U_{c} |s> = |sG>
-    std::vector<uint_t> G_inverse;
-    //Store the phase matrix M: U_{D}|x> = i^{xDx^{T}}|x>
-    uint_t M_diag1;// Diagonal elements of the phase matrix M, mod 4.
-    uint_t M_diag2;
-    std::vector<uint_t> M;// CZ part of the phase matrix M
-    scalar_t omega; //Internal phase: |phi> = omega*U_{d}*U_{c}*U_{h}|s>
+  unsigned n; //N Qubits
+  uint_t s; //Computational basis string |s>
+  uint_t v; //Hadamard string: U_{H}|s> = H(v)|s>
+  std::vector<uint_t> G; // CNOT matrix G: U_{c} |s> = |sG>
+  std::vector<uint_t> G_inverse;
+  //Store the phase matrix M: U_{D}|x> = i^{xDx^{T}}|x>
+  uint_t M_diag1;// Diagonal elements of the phase matrix M, mod 4.
+  uint_t M_diag2;
+  std::vector<uint_t> M;// CZ part of the phase matrix M
+  scalar_t omega; //Internal phase: |phi> = omega*U_{d}*U_{c}*U_{h}|s>
 
-    std::vector<uint_t> GT;
-    bool isReadyGT;
-    void TransposeG();
-    //Commute a Pauli through the D, C and H layers
-    void CommutePauliDC(pauli_t &P);
-    void CommutePauli(pauli_t &P);
-    //Update used for Hadamards and Measurement
-    void UpdateSVector(uint_t t, uint_t u, unsigned b);
+  std::vector<uint_t> GT;
+  bool isReadyGT;
+  void TransposeG();
+  //Commute a Pauli through the D, C and H layers
+  void CommutePauliDC(pauli_t &P);
+  void CommutePauli(pauli_t &P);
+  //Update used for Hadamards and Measurement
+  void UpdateSVector(uint_t t, uint_t u, unsigned b);
 
-    scalar_t InnerProduct(uint_t &A_diag1, uint_t &A_diag2, std::vector<uint_t> &A);
+  scalar_t InnerProduct(uint_t &A_diag1, uint_t &A_diag2, std::vector<uint_t> &A);
 };
 
 //-------------------------------//
@@ -783,6 +785,126 @@ scalar_t DCHState::InnerProduct(uint_t &A_diag1, uint_t &A_diag2, std::vector<ui
     amp.p -= (n+q.n);
     amp *= omega;
     return amp;
+}
+
+scalar_t DCHState::InnerProduct(DCHState& other)
+{
+  //Compute the inner product between two DCH states
+  // <phi_1|phi_2> = <s_1|H_1 C^{-1}_1 D^{-1}_1 D_2 C_2 H_2 |s_2>
+  // Set J = D^{-1}_1D_2
+  // Let J' = C^{-1}_1 J C_1
+  // Set G = C^{-1} C_2
+  // Rearrange <s_1| H_1 J' G H_2 |s_2>
+  // Define |ip> = J' G H_2 |s_2>
+  // Apply H_1 to |ip>
+  // Compute <s_2 | ip' > and return
+  if(this->n != other.n)
+  {
+    throw std::runtime_error("Cannot perform the inner product between states with "
+                             "different numbers of qubits.");
+  }
+  DCHState *left, *right;
+  if(hamming_weight(other.v) <= hamming_weight(this->v))
+  {
+    left = &other;
+    right = this;
+  }
+  else
+  {
+    left = this;
+    right = &other;
+  }
+  DCHState ip_state(right->n);
+  ip_state.v = right->v;
+  ip_state.s = right->s;
+  ip_state.omega = right->omega;
+  if(!(left->isReadyGT))
+  {
+    left->TransposeG();
+  }
+  //Compute the combined phase matrix
+  uint_t diag_1 = (right->M_diag1 ^ left->M_diag1);
+  uint_t diag_2 = (left->M_diag2 ^ left->M_diag1) ^ right->M_diag2 ^ (right->M_diag1 & left->M_diag1);
+  std::vector<uint_t> placeholder(n, zer);
+  std::vector<uint_t> J(n, zer);
+  for(unsigned i=0; i<n; i++)
+  {
+    J[i] = (left->M[i] ^ right->M[i]);
+    uint_t shift = (one << i);
+    if(!!(diag_1 & shift))
+    {
+      J[i] ^= shift;
+    }
+  }
+  //Commute the left CNOT matrix past the phase block
+  for(unsigned i=0; i<n; i++)
+  {
+    uint_t J_row = J[i]; //(M-A) is symmetric so grab a column
+    uint_t shift = (one << i);
+    for(unsigned j=0; j<n; j++)
+    {
+      unsigned weight = hamming_weight(J_row&left->GT[j]);
+      placeholder[j] ^= ((weight & 1U) * shift);
+    }
+  }
+  // Compute B:= G*((M-A)G^{T})
+  for(unsigned i=0; i<n; i++)
+  {
+    uint_t G_row = left->GT[i]; //(M-A) is symmetric so grab a column
+    uint_t shift = (one << i);
+    for(unsigned j=0; j<n; j++)
+    {
+      bool parity = hamming_parity(G_row&placeholder[j]);
+      ip_state.M[j] ^= (parity * shift);
+    }
+    //Make sure the M matrix has zero diagonal...
+    ip_state.M[i] &= ~(shift);
+    for(unsigned k=0; k<n; k++)
+    {
+      if((left->G[k]>>i)&one)
+      {
+        uint_t one_bit = (diag_1 >> k) & one;
+        if ((ip_state.M_diag1 >> i) & one_bit)
+        {
+            ip_state.M_diag2 ^= shift;
+        }
+        ip_state.M_diag1 ^= one_bit * shift;
+        ip_state.M_diag2 ^= ((diag_2 >> k) & one) * shift;
+        for (size_t l=k+1; l<n; l++)
+        {
+          if ((J[l] >> k) & (left->G[l] >> i) & one)
+          {
+              ip_state.M_diag2 ^= shift;
+          }
+        }
+      }
+    }
+  }
+  //Compute the combined G matrix
+  for(unsigned i=0; i<n; i++)
+  {
+    uint_t shift = (one << i);
+    for(unsigned j=0; j<n; j++)
+    {
+      ip_state.G[j] ^= hamming_parity(right->GT[i]&left->G_inverse[j])*shift;
+      ip_state.G_inverse[j] ^= hamming_parity(left->GT[i]&right->G_inverse[j])*shift;
+    }
+  }
+  // Commute Hadamards through to the IP state
+  for(unsigned i=0; i<n; i++)
+  {
+    if((left->v>> i) & one)
+    {
+      ip_state.H(i);
+    }
+  }
+  // Get the right global phase for the left hand state
+  scalar_t left_amp(left->omega);
+  left_amp.conjugate();
+  // Calculate the amplitude, correct and return.
+  scalar_t amp = ip_state.Amplitude(left->s);
+  amp *= left_amp;
+  return amp;
 }
 
 }
