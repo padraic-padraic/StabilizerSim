@@ -250,6 +250,7 @@ template<> std::chrono::duration<double> benchmark_measure(CHP::QState &state, u
 template<> std::chrono::duration<double> benchmark_measure(GraphSim::GraphRegister &state, unsigned n_qubits, unsigned warmup, Basis b)
 {
   GraphSim::LocCliffOp basis_choice = GraphSim::lco_Z;
+  random_circuit(state, ALL_GATES, n_qubits, warmup);
   unsigned qubit = rand() % n_qubits;
   switch(b)
   {
