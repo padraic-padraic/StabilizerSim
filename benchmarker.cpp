@@ -66,24 +66,13 @@ template<> void apply_gate(CHP::QState &state, Gate g, unsigned control, unsigne
   switch (g)
   {
   case Gate::X: //This might throw the benchmarks off somewhat?
-      CHP::hadamard(&state, control);
-      CHP::phase(&state, control);
-      CHP::phase(&state, control);
-      CHP::hadamard(&state, control);
+      CHP::x(&state, control);
       break;
   case Gate::Y:
-      //X
-      CHP::hadamard(&state, control);
-      CHP::phase(&state, control);
-      CHP::phase(&state, control);
-      CHP::hadamard(&state, control);
-      //Z
-      CHP::phase(&state, control);
-      CHP::phase(&state, control);
+      CHP::y(&state, control);
       break;
   case Gate::Z:
-      CHP::phase(&state, control);
-      CHP::phase(&state, control);
+      CHP::z(&state, control);
       break;
   case Gate::H:
       CHP::hadamard(&state, control);
@@ -195,26 +184,103 @@ template<class T> std::chrono::duration<double> benchmark_gate(T &state, unsigne
   return diff;
 }
 
-template<class T> std::chrono::duration<double> benchmark_measure(T &state, unsigned n_qubits)
+enum class Basis {X, Y, Z};
+
+std::map<std::string, Basis> basis_names(
+{
+  {"X", Basis::X},
+  {"Y", Basis::Y},
+  {"Z", Basis::Z}
+});
+
+//Global Measurement Variables
+
+int CHPRES;
+int GSRES;
+
+
+template<class T> std::chrono::duration<double> benchmark_measure(T &state, unsigned n_qubits, unsigned warmup, Basis b)
 {
   //placeholder
-  return std::chrono::duration<double>(0);
+  random_circuit(state, ALL_GATES, n_qubits, warmup);
+  unsigned qubit = rand() % n_qubits;
+  StabilizerSimulator::pauli_t P;
+  switch (b)
+  {
+    case Basis::X:
+      P.X ^= (1ULL << qubit);
+      break;
+    case Basis::Y:
+      P.X ^= (1ULL << qubit);
+      P.Z ^= (1ULL << qubit);
+    case Basis::Z:
+      P.Z ^= (1ULL << qubit);
+      break;
+  }
+  auto start = std::chrono::high_resolution_clock::now();
+  state.MeasurePauli(P);
+  auto end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> diff = end-start;
+  return diff;
+}
+
+template<> std::chrono::duration<double> benchmark_measure(CHP::QState &state, unsigned n_qubits, unsigned warmup, Basis b)
+{
+  //placeholder
+  random_circuit(state, ALL_GATES, n_qubits, warmup);
+  unsigned qubit = rand() % n_qubits;
+  StabilizerSimulator::pauli_t P;
+  switch (b)
+  {
+    case Basis::X:
+      CHP::hadamard(&state, qubit);
+      break;
+    case Basis::Y:
+      CHP::hadamard(&state, qubit);
+      CHP::phase(&state, qubit);
+      break;
+  }
+  auto start = std::chrono::high_resolution_clock::now();
+  CHPRES = CHP::measure(&state, qubit, 1);
+  auto end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> diff = end-start;
+  return diff;
+}
+
+template<> std::chrono::duration<double> benchmark_measure(GraphSim::GraphRegister &state, unsigned n_qubits, unsigned warmup, Basis b)
+{
+  GraphSim::LocCliffOp basis_choice = GraphSim::lco_Z;
+  unsigned qubit = rand() % n_qubits;
+  switch(b)
+  {
+    case Basis::X:
+      basis_choice = GraphSim::lco_X;
+      break;
+    case Basis::Y:
+      basis_choice = GraphSim::lco_Y;
+      break;
+  }
+  auto start = std::chrono::high_resolution_clock::now();
+  GSRES = state.measure(qubit, basis_choice);
+  auto end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> diff = end-start;
+  return diff;
 }
 
 template<class T> std::chrono::duration<double> benchmark_innerprod(T &state, T &state2, unsigned n_qubits, unsigned warmup)
 {
   //placeholder
   random_circuit(state, ALL_GATES, n_qubits, warmup);
-  random_circuit(state, ALL_GATES, n_qubits, warmup);
+  random_circuit(state2, ALL_GATES, n_qubits, warmup);
   auto start = std::chrono::high_resolution_clock::now();
   // state.InnerProduct(state2);
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> diff = end-start;
-  return std::chrono::duration<double>(0);
+  return diff;
 }
 
 template<class T> std::chrono::duration<double> benchmark_op(T &state, unsigned n_qubits,
-                                                             std::string op_string, unsigned warmup)
+                                                             std::string op_string, unsigned warmup, Basis b)
 {
   random_circuit(state, ALL_GATES, n_qubits, warmup);
   auto is_gate = gate_names.find(op_string);
@@ -224,14 +290,14 @@ template<class T> std::chrono::duration<double> benchmark_op(T &state, unsigned 
   }
   if(op_string == "measure")
   {
-    return benchmark_measure(state, n_qubits);
+    return benchmark_measure(state, n_qubits, warmup, b);
   }
   throw std::runtime_error("Don't recognise op_string: " + op_string);
 }
 
 int main(int argc, char* argv[])
 {
-  if(argc < 4)
+  if(argc < 5)
   {
       throw std::runtime_error("Expected at least four arguments: simulator, operation, beta, and an output file name.");
   }
@@ -248,6 +314,24 @@ int main(int argc, char* argv[])
   std::string out_name = argv[4];
   output_data.open(out_name);
   output_data << "Num Qubits \t Average Operation Time\n";
+  Basis b = Basis::Z;
+  if (argc == 6)
+  {
+    if (op_string != "measure")
+    {
+      std::cout << "Extra arguments ignored unless this is a measurement" << std::endl;
+    }
+    else
+    {
+      std::string basis_choice = argv[5];
+      auto basis = basis_names.find(basis_choice);
+      if (basis == basis_names.end())
+      {
+        throw std::runtime_error("Do not recognise measurement basis " + basis_choice);
+      }
+      b = basis->second;
+    }
+  }
   for(unsigned n=5; n<62; n++)
   {
     std::cout << n << " qubits run." << std::endl;
@@ -262,7 +346,7 @@ int main(int argc, char* argv[])
           StabilizerSimulator::CHState ch(n);
           if(op_string != "innerprod")
           {
-            sum_time += benchmark_op(ch, n, op_string, circuit_warmup);
+            sum_time += benchmark_op(ch, n, op_string, circuit_warmup, b);
           }
           else
           {
@@ -276,7 +360,7 @@ int main(int argc, char* argv[])
           StabilizerSimulator::DCHState dch(n);
           if(op_string != "innerprod")
           {
-            sum_time += benchmark_op(dch, n, op_string, circuit_warmup);
+            sum_time += benchmark_op(dch, n, op_string, circuit_warmup, b);
           }
           else
           {
@@ -291,7 +375,7 @@ int main(int argc, char* argv[])
           CHP::initstae_(&chp, n, NULL);
           if(op_string != "innerprod")
           {
-            sum_time += benchmark_op(chp, n, op_string, circuit_warmup);
+            sum_time += benchmark_op(chp, n, op_string, circuit_warmup, b);
           }
           else
           {
@@ -306,7 +390,7 @@ int main(int argc, char* argv[])
           GraphSim::GraphRegister gsim(n);
           if(op_string != "innerprod")
           {
-            sum_time += benchmark_op(gsim, n, op_string, circuit_warmup);
+            sum_time += benchmark_op(gsim, n, op_string, circuit_warmup, b);
           }
           else
           {
