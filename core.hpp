@@ -15,6 +15,7 @@ namespace StabilizerSimulator
 {
 // Definitions for implementing arbitrary binary vectors and matrices as arrays of 64bit integers
 using uint_t = uint_fast64_t;
+using complex_t = std::complex<double>;
 
 #define WORD_BITS (CHAR_BIT * sizeof(uint_t))
 // Calculate which integer in the array we are looking at
@@ -53,14 +54,14 @@ struct scalar_t {
   scalar_t& operator*=(const scalar_t& rhs);
   scalar_t operator*(const scalar_t& rhs) const;
 
-  std::complex<double> to_complex() const
+  complex_t to_complex() const
   {
     if (eps==0)
     {
-      return std::complex<double>(0., 0.);
+      return complex_t(0., 0.);
     }
-    std::complex<double> mag(std::pow(2, p/(double)2), 0.);
-    std::complex<double> phase(RE_PHASE[e], IM_PHASE[e]);
+    complex_t mag(std::pow(2, p/(double)2), 0.);
+    complex_t phase(RE_PHASE[e], IM_PHASE[e]);
     return mag*phase;
   }
 
