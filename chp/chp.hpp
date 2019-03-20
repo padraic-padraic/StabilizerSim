@@ -111,7 +111,7 @@ void y(struct QState *q, long b)
     pwb = q->pw[b&31];
     for(i=0; i<2*q->n; i++)
     {
-        if (!((q->x[i][b5] & pwb) && (q->z[i] & pwb))) q->r[i] = (q->r[i] +2)%4;
+        if (!((q->x[i][b5] & pwb) && (q->z[i][b5] & pwb))) q->r[i] = (q->r[i] +2)%4;
     }
 }
 

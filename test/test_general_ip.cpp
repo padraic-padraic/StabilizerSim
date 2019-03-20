@@ -250,7 +250,7 @@ TEST_CASE("Tableu combining")
     unsigned n_gates = 2000;
     CHState ch1(n_qubits);
     CHState ch2(n_qubits);
-    random_circuit(ch1, all_gates);
+    random_circuit(ch1, c_gates);
     std::string circuit_2 = random_circuit(ch2, c_gates, n_gates);
     std::vector<uint_t> left_G = ch2.GMatrix();
     std::vector<uint_t> left_F = ch2.FMatrix();
@@ -393,6 +393,7 @@ TEST_CASE("Tableu combining")
     }
     CHECK(new_g1 == ch1.Gamma1());
     CHECK(new_g2 == ch1.Gamma2());
+    CHECK(check_states(ch1, ch2));
 }
 
 TEST_CASE("Conjugate Tableu combining")
@@ -401,14 +402,27 @@ TEST_CASE("Conjugate Tableu combining")
     unsigned n_gates = 20;
     CHState ch2(n_qubits);
     uint_t x_string = zer;
+    std::cout << "Initialise with string: ";
     for(unsigned i=0; i<n_qubits; i++)
     {
         if(rand()%2)
         {
             x_string ^= (one << i);
+            std::cout << 1;
+        }
+        else
+        {
+            std::cout << 0;
         }
     }
+    std::cout << std::endl;
     ch2.CompBasisVector(x_string);
+    CHState compstate(n_qubits);
+    CHState conj_state(n_qubits);
+    CHState conj_state_manual(n_qubits);
+    compstate.CompBasisVector(x_string);
+    conj_state.CompBasisVector(x_string);
+    conj_state_manual.CompBasisVector(x_string);    
     std::string circuit_2 = random_circuit(ch2, c_gates, n_gates);
     std::cout << "===== SEQUENCE =====" << std::endl;
     std::cout << circuit_2 << std::endl;
@@ -462,10 +476,15 @@ TEST_CASE("Conjugate Tableu combining")
     uint_t new_g2 = zer;
     new_g2 = left_g2 ^ left_g1;
     new_g1 = left_g1;
+    conj_state_manual.SetG(left_G);
+    conj_state_manual.SetF(left_F);
+    conj_state_manual.SetM(left_M);
     for(unsigned i=0; i<n_qubits; i++)
     {
         new_g2 ^= hamming_parity(left_FT[i]&left_MT[i])*(one << i);
     }
+    conj_state_manual.SetGamma1(new_g1);
+    conj_state_manual.SetGamma2(new_g2);
     for(unsigned i=0; i<n_qubits; i++)
     {
         uint_t shift = (one << i);
@@ -556,14 +575,22 @@ TEST_CASE("Conjugate Tableu combining")
         }
         auto end_pos = circuit_2.find_last_of(")");
         circuit_2.erase(start_pos+1);
-        apply_gate(ch2, found->second, control, target);
+        apply_gate(ch1, found->second, control, target);
+        apply_gate(conj_state, found->second, control, target, true );
     }
     CHECK(check_states(ch1, ch2));
+    CHECK(check_states(compstate, ch1));
+    CHECK(conj_state.GMatrix() == conj_state_manual.GMatrix());
+    CHECK(conj_state.FMatrix() == conj_state_manual.FMatrix());
+    CHECK(conj_state.MMatrix() == conj_state_manual.MMatrix());
+    CHECK(conj_state.Gamma1() == conj_state_manual.Gamma1());
+    CHECK(conj_state.Gamma2() == conj_state_manual.Gamma2());
 }
 
 int main( int argc, char* argv[] ) {
   time_t t;
   unsigned seed = (unsigned) time(&t);
+  // unsigned seed = 1552553973;
   std::cout << "Initialized with seed: " << seed << std::endl;
   srand(seed);
 
