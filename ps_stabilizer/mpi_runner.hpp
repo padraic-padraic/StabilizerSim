@@ -2,6 +2,7 @@
 #define MPIRUNNER_HPP
 
 #include "core.hpp"
+#include "rng.hpp"
 #include "runner.hpp"
 
 #include "mpi.h"
@@ -88,7 +89,8 @@ private:
 
 }
 
-void MPIRunner::initialize(unsigned n_qubits_, unsigned n_states_, stabilizer_t& initial_state)
+template <class stabilizer_t>
+void MPIRunner<stabilizer_t>::initialize(unsigned n_qubits_, unsigned n_states_, stabilizer_t& initial_state)
 {
   n_qubits = n_qubits_;
   total_states = n_states_;
@@ -96,6 +98,9 @@ void MPIRunner::initialize(unsigned n_qubits_, unsigned n_states_, stabilizer_t&
   coefficients.clear();
   states.reserve(n_states_);
   coefficients.reserve(n_states_)
+  unsigned seed = std::time(nullptr);
+  MPI_Bcast(&seed, 1, MPI_UNSIGNED, 0, comm);
+  init_rng(seed, my_rank);
   if (my_rank==0) //Divive up the states
   {
     int task_divider = n_procs;
@@ -128,7 +133,8 @@ void MPIRunner::initialize(unsigned n_qubits_, unsigned n_states_, stabilizer_t&
   }
 }
 
-void MPIRunner::finalize()
+template <class stabilizer_t>
+void MPIRunner<stabilizer_t>::finalize()
 {
   if (group != MPI_GROUP_NULL)
   {
@@ -141,7 +147,8 @@ void MPIRunner::finalize()
   finalized = true;
 }
 
-MPIRunner::i4_div_rounded(int a, int b)
+template <class stabilizer_t>
+MPIRunner<stabilizer_t>::i4_div_rounded(int a, int b)
 {
   // Implementation from https://people.sc.fsu.edu/~jburkardt/cpp_src/task_division/task_division.html
   // Written by  John Burkardt, Department of Scientific Computing, Florida State University
@@ -187,7 +194,8 @@ MPIRunner::i4_div_rounded(int a, int b)
   return value;
 }
 
-void MPIRunner::init_metropolis()
+template <class stabilizer_t>
+void MPIRunner<stabilizer_t>::init_metropolis()
 {
   accept = 0;
   last_proposal = 0;
@@ -195,7 +203,7 @@ void MPIRunner::init_metropolis()
   if(is_master)
   {
     uint_t max = (1ULL<<n_qubits) - 1;
-    x_string = rng.rand_int(ZERO, max);
+    x_string = (rand_int() & max);
   }
   MPI_Bcast(&x_string, 1, MPI_UNSIGNED_LONG_LONG, 0, comm);
   double local_real=0., local_imag=0.;
@@ -219,14 +227,15 @@ void MPIRunner::init_metropolis()
   }
 }
 
-void MPIRunner::metropolis_step()
+template <class stabilizer_t>
+void MPIRunner<stabilizer_t>::metropolis_step()
 {
   MPI_Bcast(&last_proposal, 1, MPI_UNSIGNED, 0, comm);
   MPI_Bcast(&accept, 1, MPI_UNSIGNED, 0, comm);
   unsigned proposal;
   if(is_master)
   {
-    proposal = 0U; //TODO: Random number getting!
+    proposal = rand_int() % n_qubits; //TODO: Random number getting!
   }
   MPI_Bcast(&proposal, 1, MPI_UNSIGNED, 0, comm);
   if(accept)
@@ -280,7 +289,7 @@ void MPIRunner::metropolis_step()
     }
     else
     {
-      double rand = rand() / double(RAND_MAX);
+      double rand = rand_double();
       if (rand < p_threshold)
       {
         accept = 1;
