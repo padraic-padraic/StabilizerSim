@@ -3,7 +3,9 @@
 
 #include "core.hpp"
 #include "norm_estimation.hpp"
+#include "rng.hpp"
 
+#include <ctime>
 #include <vector>
 
 #ifdef _OPENMP
@@ -18,13 +20,13 @@
 namespace StabilizerSimulator
 {
 
-class DecompositionBuilder
+struct DecompositionBuilder
 {
   DecompositionBuilder();
   virtual ~DecompositionBuilder() = default;
 
   virtual void operator()(unsigned rank) = 0;
-}
+};
 
 template <class stabilizer_t> class Runner
 {
@@ -38,7 +40,6 @@ public:
   ~Runner() = default;
 
   friend DecompositionBuilder;
-  friend ProbabilityFunc;
 
   void initialize(unsigned n_qubits_, unsigned n_states_, stabilizer_t& initial_state);
 
@@ -61,9 +62,10 @@ private:
 
   virtual void init_metropolis();
   virtual void metropolis_step();
-}
+};
 
-void Runner::initialize(unsigned n_qubits_, unsigned n_states_, stabilizer_t& initial_state)
+template <class stabilizer_t>
+void Runner<stabilizer_t>::initialize(unsigned n_qubits_, unsigned n_states_, stabilizer_t& initial_state)
 {
   states.clear();
   coefficients.clear();
@@ -71,6 +73,15 @@ void Runner::initialize(unsigned n_qubits_, unsigned n_states_, stabilizer_t& in
   coefficients.reserve(n_states_);
   n_qubits = n_qubits_;
   complex_t initial_coeff(1., 0.);
+  unsigned seed = std::time(nullptr);
+  #ifdef _OPENMP
+    #pragma parallel
+    {
+      init_rng(seed, omp_get_thread_num());
+    }
+  #else
+    init_rng(seed, 0);
+  #endif
   for(unsigned i=0; i<n_states_; i++)
   {
     states.push_back(initial_state);
@@ -78,7 +89,8 @@ void Runner::initialize(unsigned n_qubits_, unsigned n_states_, stabilizer_t& in
   }
 }
 
-void Runner::build_decomposition(DecompositionBuilder& db_func)
+template <class stabilizer_t>
+void Runner<stabilizer_t>::build_decomposition(DecompositionBuilder& db_func)
 {
   #pragma omp parallel for
   for(unsigned i=0; i<n_states; i++)
@@ -87,12 +99,12 @@ void Runner::build_decomposition(DecompositionBuilder& db_func)
   }
 }
 
-void Runner::init_metropolis()
+template <class stabilizer_t>
+void Runner<stabilizer_t>::init_metropolis()
 {
   accept = 0;
-  //Random initial x_string from RngEngine
   uint_t max = (1ULL<<n_qubits) - 1;
-  x_string = rng.rand_int(ZERO, max);
+  x_string = (rand_int() & max);
   last_proposal=0;
   double local_real=0., local_imag=0.;
   #pragma omp parallel for reduction(+:local_real) reduction(+:local_imag)
@@ -109,9 +121,10 @@ void Runner::init_metropolis()
   old_ampsum = complex_t(local_real, local_imag);
 }
 
-void Runner::metropolis_step()
+template <class stabilizer_t>
+void Runner<stabilizer_t>::metropolis_step()
 {
-  uint_t proposal = zer;
+  uint_t proposal = rand_int() % n_qubits;
   if(accept)
   {
     x_string ^= (one << last_proposal);
@@ -126,8 +139,8 @@ void Runner::metropolis_step()
       if(amp.eps == 1)
       {
         complex_t local = amp.to_complex() * coefficients[i];
-        local_real += local.real();
-        local_imag += local.imag();
+        real_part += local.real();
+        imag_part += local.imag();
       }
     }
   }
@@ -141,8 +154,8 @@ void Runner::metropolis_step()
       if(amp.eps == 1)
       {
         complex_t local = amp.to_complex() * coefficients[i];
-        local_real += local.real();
-        local_imag += local.imag();
+        real_part += local.real();
+        imag_part += local.imag();
       }
     }
   }
@@ -160,7 +173,7 @@ void Runner::metropolis_step()
   }
   else
   {
-    double rand = rng.rand();
+    double rand = rand_double();
     if (rand < p_threshold)
     {
       accept = 1;
@@ -174,7 +187,8 @@ void Runner::metropolis_step()
   }
 }
 
-uint_t Runner::monte_carlo_sampler(unsigned mixing_time=7000)
+template <class stabilizer_t>
+uint_t Runner<stabilizer_t>::monte_carlo_sampler(unsigned mixing_time)
 {
   init_metropolis();
   for(unsigned i=0; i<mixing_time; i++)
@@ -184,7 +198,8 @@ uint_t Runner::monte_carlo_sampler(unsigned mixing_time=7000)
   return x_string;
 }
 
-std::vector<uint_t> Runner::monte_carlo_sampler(unsigned n_shots=3000, unsigned mixing_time=7000)
+template <class stabilizer_t>
+std::vector<uint_t> Runner<stabilizer_t>::monte_carlo_sampler(unsigned n_shots, unsigned mixing_time)
 {
   std::vector<uint_t> shots;
   shots.reserve(n_shots);

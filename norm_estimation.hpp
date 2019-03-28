@@ -1,4 +1,4 @@
-#include "libstabilizer/core.hpp"
+#include "core.hpp"
 
 #include <complex>
 #include <vector>
