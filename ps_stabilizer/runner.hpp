@@ -104,7 +104,7 @@ void Runner<stabilizer_t>::init_metropolis()
 {
   accept = 0;
   uint_t max = (1ULL<<n_qubits) - 1;
-  x_string = (rand_int() & max);
+  x_string = (random_uint() & max);
   last_proposal=0;
   double local_real=0., local_imag=0.;
   #pragma omp parallel for reduction(+:local_real) reduction(+:local_imag)
@@ -124,7 +124,7 @@ void Runner<stabilizer_t>::init_metropolis()
 template <class stabilizer_t>
 void Runner<stabilizer_t>::metropolis_step()
 {
-  uint_t proposal = rand_int() % n_qubits;
+  uint_t proposal = random_uint() % n_qubits;
   if(accept)
   {
     x_string ^= (one << last_proposal);
@@ -173,7 +173,7 @@ void Runner<stabilizer_t>::metropolis_step()
   }
   else
   {
-    double rand = rand_double();
+    double rand = random_double();
     if (rand < p_threshold)
     {
       accept = 1;
