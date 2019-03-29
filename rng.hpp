@@ -47,7 +47,7 @@ static inline uint64_t xoro_rotl(const uint64_t x, int k) {
 
 thread_local static uint64_t xoro_s[4];
 
-uint64_t next(void) {
+uint64_t xoro_next(void) {
     const uint64_t result_starstar = xoro_rotl(xoro_s[1] * 5, 7) * 9;
 
     const uint64_t t = xoro_s[1] << 17;
@@ -77,7 +77,7 @@ void init_rng(unsigned seed, unsigned offset=0)
   xoro_s[3] = sm_next();
 }
 
-double rand_double()
+double random_double()
 {
   uint64_t x = xoro_next();
   return (x >> 11) * (1. / (UINT64_C(1) << 53));

@@ -15,11 +15,14 @@ static std::vector<int> EMPTY_RANKS;
 template<class stabilizer_t> class MPIRunner : public Runner<stabilizer_t>
 {
 public:
+
+  using BaseRunner = Runner<stabilizer_t>;
+
   MPIRunner(std::vector<int> ranks, MPI_Comm communicator) :
   group(MPI_GROUP_NULL),
   finalized(false),
   is_in_lib(false),
-  is_master(false),
+  is_master(false)
   {
     MPI_Comm to_dup = communicator;
     if (to_dup == MPI_COMM_NULL)
@@ -54,7 +57,6 @@ public:
         is_master = true;
       }
     }
-    stabilizer_t init_state()
   };
 
   MPIRunner() : MPIRunner(EMPTY_RANKS, MPI_COMM_NULL) {};
@@ -87,29 +89,25 @@ private:
   void init_metropolis() override;
   void metropolis_step() override;
 
-}
+};
 
 template <class stabilizer_t>
 void MPIRunner<stabilizer_t>::initialize(unsigned n_qubits_, unsigned n_states_, stabilizer_t& initial_state)
 {
-  n_qubits = n_qubits_;
+  BaseRunner::n_qubits = n_qubits_;
   total_states = n_states_;
-  states.clear();
-  coefficients.clear();
-  states.reserve(n_states_);
-  coefficients.reserve(n_states_)
   unsigned seed = std::time(nullptr);
   MPI_Bcast(&seed, 1, MPI_UNSIGNED, 0, comm);
   init_rng(seed, my_rank);
   if (my_rank==0) //Divive up the states
   {
     int task_divider = n_procs;
-    int states_chunk = i4_div_rounded(chi, task_divider);
-    n_states = states_chunk;
+    int states_chunk = i4_div_rounded(total_states, task_divider);
+    BaseRunner::n_states = states_chunk;
     index_low = 0;
     // Setup divider loop
     task_divider= task_divider-1;
-    int chi_left = chi - states_chunk;
+    int chi_left = total_states - states_chunk;
     int low_index = states_chunk;
     for (int proc=1; proc<n_procs; proc++)
     {
@@ -123,13 +121,17 @@ void MPIRunner<stabilizer_t>::initialize(unsigned n_qubits_, unsigned n_states_,
   }
   else
   {
-    MPI_Recv(&n_states, 1, MPI_UNSIGNED, 0, 0, comm, MPI_STATUS_IGNORE);
+    MPI_Recv(&BaseRunner::n_states, 1, MPI_UNSIGNED, 0, 0, comm, MPI_STATUS_IGNORE);
     MPI_Recv(&index_low, 1, MPI_INT, 0, 0, comm, MPI_STATUS_IGNORE);
   }
-  for(unsigned i=0; i<n_states; i++)
+  BaseRunner::states.clear();
+  BaseRunner::coefficients.clear();
+  BaseRunner::states.reserve(BaseRunner::n_states);
+  BaseRunner::coefficients.reserve(BaseRunner::n_states);
+  for(unsigned i=0; i<BaseRunner::n_states; i++)
   {
-    states.push_back(initial_state);
-    coefficients.push_back(complex_t(1., 0.));
+    BaseRunner::states.push_back(initial_state);
+    BaseRunner::coefficients.push_back(complex_t(1., 0.));
   }
 }
 
@@ -148,7 +150,7 @@ void MPIRunner<stabilizer_t>::finalize()
 }
 
 template <class stabilizer_t>
-MPIRunner<stabilizer_t>::i4_div_rounded(int a, int b)
+int MPIRunner<stabilizer_t>::i4_div_rounded(int a, int b)
 {
   // Implementation from https://people.sc.fsu.edu/~jburkardt/cpp_src/task_division/task_division.html
   // Written by  John Burkardt, Department of Scientific Computing, Florida State University
@@ -197,61 +199,61 @@ MPIRunner<stabilizer_t>::i4_div_rounded(int a, int b)
 template <class stabilizer_t>
 void MPIRunner<stabilizer_t>::init_metropolis()
 {
-  accept = 0;
-  last_proposal = 0;
+  BaseRunner::accept = 0;
+  BaseRunner::last_proposal = 0;
   //Random initial x_string from RngEngine
   if(is_master)
   {
-    uint_t max = (1ULL<<n_qubits) - 1;
-    x_string = (rand_int() & max);
+    uint_t max = (1ULL<<BaseRunner::n_qubits) - 1;
+    BaseRunner::x_string = (random_uint() & max);
   }
-  MPI_Bcast(&x_string, 1, MPI_UNSIGNED_LONG_LONG, 0, comm);
+  MPI_Bcast(&BaseRunner::x_string, 1, MPI_UNSIGNED_LONG_LONG, 0, comm);
   double local_real=0., local_imag=0.;
-  double real_ampsum=0., imag_ampsim=0.;
+  double real_ampsum=0., imag_ampsum=0.;
   complex_t local(0., 0.);
-  for (uint_t i=0; i<n_states; i++)
+  for (uint_t i=0; i<BaseRunner::n_states; i++)
   {
-    scalar_t amp = states[i].Amplitude(x_string);
+    scalar_t amp = BaseRunner::states[i].Amplitude(BaseRunner::x_string);
     if(amp.eps == 1)
     {
-      local += (amp.to_complex() * coefficients[i]);
+      local += (amp.to_complex() * BaseRunner::coefficients[i]);
     }
   }
-  local_real = local.read();
+  local_real = local.real();
   local_imag = local.imag();
   MPI_Reduce(&local_real, &real_ampsum, 1, MPI_DOUBLE, MPI_SUM, 0, comm);
   MPI_Reduce(&local_imag, &imag_ampsum, 1, MPI_DOUBLE, MPI_SUM, 0, comm);
   if(is_master)
   {
-    old_ampsum = complex_t(real_ampsum, imag_ampsum);
+    BaseRunner::old_ampsum = complex_t(real_ampsum, imag_ampsum);
   }
 }
 
 template <class stabilizer_t>
 void MPIRunner<stabilizer_t>::metropolis_step()
 {
-  MPI_Bcast(&last_proposal, 1, MPI_UNSIGNED, 0, comm);
-  MPI_Bcast(&accept, 1, MPI_UNSIGNED, 0, comm);
+  MPI_Bcast(&BaseRunner::last_proposal, 1, MPI_UNSIGNED, 0, comm);
+  MPI_Bcast(&BaseRunner::accept, 1, MPI_UNSIGNED, 0, comm);
   unsigned proposal;
   if(is_master)
   {
-    proposal = rand_int() % n_qubits; //TODO: Random number getting!
+    proposal = random_uint() % BaseRunner::n_qubits; //TODO: Random number getting!
   }
   MPI_Bcast(&proposal, 1, MPI_UNSIGNED, 0, comm);
-  if(accept)
+  if(BaseRunner::accept)
   {
-    x_string ^= (one << last_proposal);
+    BaseRunner::x_string ^= (one << BaseRunner::last_proposal);
   }
-  double real_part = 0.,imag_part = 0.;
-  double local_real =0. local_imag = 0.
-  if (accept == 0)
+  double real_part = 0., imag_part = 0.;
+  double local_real =0., local_imag = 0.;
+  if (BaseRunner::accept == 0)
   {
-    for (uint_t i=0; i<n_states; i++)
+    for (uint_t i=0; i<BaseRunner::n_states; i++)
     {
-      scalar_t amp = states[i].ProposeFlip(proposal);
+      scalar_t amp = BaseRunner::states[i].ProposeFlip(proposal);
       if(amp.eps == 1)
       {
-        complex_t local = amp.to_complex() * coefficients[i];
+        complex_t local = amp.to_complex() * BaseRunner::coefficients[i];
         local_real += local.real();
         local_imag += local.imag();
       }
@@ -259,13 +261,13 @@ void MPIRunner<stabilizer_t>::metropolis_step()
   }
   else
   {
-    for (uint_t i=0; i<n_states; i++)
+    for (uint_t i=0; i<BaseRunner::n_states; i++)
     {
-      states[i].AcceptFlip();
-      scalar_t amp = states[i].ProposeFlip(proposal);
+      BaseRunner::states[i].AcceptFlip();
+      scalar_t amp = BaseRunner::states[i].ProposeFlip(proposal);
       if(amp.eps == 1)
       {
-        complex_t local = amp.to_complex() * coefficients[i];
+        complex_t local = amp.to_complex() * BaseRunner::coefficients[i];
         local_real += local.real();
         local_imag += local.imag();
       }
@@ -276,29 +278,29 @@ void MPIRunner<stabilizer_t>::metropolis_step()
   if(is_master)
   {
     complex_t ampsum(real_part, imag_part);
-    double p_threshold = std::norm(ampsum)/std::norm(old_ampsum);
+    double p_threshold = std::norm(ampsum)/std::norm(BaseRunner::old_ampsum);
     #ifdef  __FAST_MATH__ //isnan doesn't behave well under fastmath, so use absolute tolerance check instead
     if(std::isinf(p_threshold) || std::abs(std::norm(old_ampsum)-0.) < 1e-8)
     #else
     if(std::isinf(p_threshold) || std::isnan(p_threshold))
     #endif
     {
-      accept = 1;
-      old_ampsum = ampsum;
-      last_proposal = proposal; //We try to move away from node with 0 probability.
+      BaseRunner::accept = 1;
+      BaseRunner::old_ampsum = ampsum;
+      BaseRunner::last_proposal = proposal; //We try to move away from node with 0 probability.
     }
     else
     {
-      double rand = rand_double();
+      double rand = random_double();
       if (rand < p_threshold)
       {
-        accept = 1;
-        old_ampsum = ampsum;
-        last_proposal = proposal;
+        BaseRunner::accept = 1;
+        BaseRunner::old_ampsum = ampsum;
+        BaseRunner::last_proposal = proposal;
       }
       else
       {
-        accept = 0;
+        BaseRunner::accept = 0;
       }
     }
   }
