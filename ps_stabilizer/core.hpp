@@ -26,93 +26,6 @@ using complex_t = std::complex<double>;
 extern const uint_t zer = 0U;
 extern const uint_t one = 1U;
 
-struct scalar_t {
-  // complex numbers of the form eps * 2^{p/2} * exp(i (pi/4)*e )
-  // eps=0,1       p=integer         e=0,1,...,7
-  // if eps=0 then p and e are arbitrary
-  int eps;
-  int p;
-  int e;
-  // constructor makes number 1
-  scalar_t(): eps(1), p(0), e(0) {};
-  scalar_t(const scalar_t& rhs): eps(rhs.eps), p(rhs.p), e(rhs.e) {};
-
-  // complex conjugation
-  inline void conjugate()
-  {
-   e%=8;
-   e=(8-e) % 8; 
-  }
-
-  inline void makeOne() 
-  {
-    eps=1;
-    p=0;
-    e=0;
-  }
-
-  scalar_t& operator*=(const scalar_t& rhs);
-  scalar_t operator*(const scalar_t& rhs) const;
-
-  complex_t to_complex() const
-  {
-    if (eps==0)
-    {
-      return complex_t(0., 0.);
-    }
-    complex_t mag(std::pow(2, p/(double)2), 0.);
-    complex_t phase(RE_PHASE[e], IM_PHASE[e]);
-    return mag*phase;
-  }
-
-  void Print()
-  {
-    std::cout<<"eps="<<eps<<", p="<<p<<", e="<<e<<std::endl;
-  }
-
-};
-
-// Below we represent n-bit strings by uint64_t integers
-struct pauli_t {
-  // n-qubit Pauli operators: i^e * X(x) * Z(z)
-  uint_t X; // n-bit string
-  uint_t Z; // n-bit string
-  unsigned e; // takes values 0,1,2,3
-  
-  // constructor makes the identity Pauli operator 
-  pauli_t();
-  pauli_t(const pauli_t& p): X(p.X), Z(p.Z), e(p.e) {};
-
-  // multiplication of Pauli operators
-  pauli_t& operator*=( const pauli_t& rhs );
-
-};
-
-struct QuadraticForm {
-  unsigned int n;
-  int Q;
-  uint_t D1;
-  uint_t D2;
-  std::vector<uint_t> J;
-  scalar_t ExponentialSum();
-  QuadraticForm(unsigned n_qubits);
-  QuadraticForm(const QuadraticForm& rhs);
-  QuadraticForm& operator -=(const QuadraticForm& rhs);
-  // ~QuadraticForm();
-};
-
-bool operator==(const QuadraticForm& lhs, const QuadraticForm& rhs);
-
-std::ostream& operator<<(std::ostream& os, const QuadraticForm& q);
-
-void Print(uint_t x, unsigned n);// print a bit string 
-void Print(std::vector<uint_t> A, unsigned n);// print a binary matrix
-// A[i] represents i-th column of the matrix
-
-//---------------------------------------//
-// Implementations                       //
-//---------------------------------------//
-
 #ifdef _MSC_VER
   #define INTRINSIC_PARITY 1
   #include <intrin.h>
@@ -179,6 +92,103 @@ void Print(std::vector<uint_t> A, unsigned n);// print a binary matrix
   bool (*hamming_parity) (uint_t) = &_naive_parity;
   unsigned (*hamming_weight) (uint_t) = &_naive_weight;
 #endif
+
+struct scalar_t {
+  // complex numbers of the form eps * 2^{p/2} * exp(i (pi/4)*e )
+  // eps=0,1       p=integer         e=0,1,...,7
+  // if eps=0 then p and e are arbitrary
+  int eps;
+  int p;
+  int e;
+  // constructor makes number 1
+  scalar_t(): eps(1), p(0), e(0) {};
+  scalar_t(const scalar_t& rhs): eps(rhs.eps), p(rhs.p), e(rhs.e) {};
+
+  // complex conjugation
+  inline void conjugate()
+  {
+   e%=8;
+   e=(8-e) % 8; 
+  }
+
+  inline void makeOne() 
+  {
+    eps=1;
+    p=0;
+    e=0;
+  }
+
+  scalar_t& operator*=(const scalar_t& rhs);
+  scalar_t operator*(const scalar_t& rhs) const;
+
+  complex_t to_complex() const
+  {
+    if (eps==0)
+    {
+      return complex_t(0., 0.);
+    }
+    complex_t mag(std::pow(2, p/(double)2), 0.);
+    complex_t phase(RE_PHASE[e], IM_PHASE[e]);
+    return mag*phase;
+  }
+
+  void Print()
+  {
+    std::cout<<"eps="<<eps<<", p="<<p<<", e="<<e<<std::endl;
+  }
+
+};
+
+// Below we represent n-bit strings by uint64_t integers
+struct pauli_t {
+  // n-qubit Pauli operators: i^e * X(x) * Z(z)
+  uint_t X; // n-bit string
+  uint_t Z; // n-bit string
+  unsigned e; // takes values 0,1,2,3
+  
+  // constructor makes the identity Pauli operator 
+  pauli_t();
+  pauli_t(const pauli_t& p): X(p.X), Z(p.Z), e(p.e) {};
+
+  // multiplication of Pauli operators
+  pauli_t& operator*=( const pauli_t& rhs );
+
+  unsigned weight() 
+  {
+    return hamming_weight(X|Z);
+  };
+
+  uint_t support()
+  {
+    return (X|Z);
+  };
+
+};
+
+struct QuadraticForm {
+  unsigned int n;
+  int Q;
+  uint_t D1;
+  uint_t D2;
+  std::vector<uint_t> J;
+  scalar_t ExponentialSum();
+  QuadraticForm(unsigned n_qubits);
+  QuadraticForm(const QuadraticForm& rhs);
+  QuadraticForm& operator -=(const QuadraticForm& rhs);
+  // ~QuadraticForm();
+};
+
+bool operator==(const QuadraticForm& lhs, const QuadraticForm& rhs);
+
+std::ostream& operator<<(std::ostream& os, const QuadraticForm& q);
+
+void Print(uint_t x, unsigned n);// print a bit string 
+void Print(std::vector<uint_t> A, unsigned n);// print a binary matrix
+// A[i] represents i-th column of the matrix
+
+//---------------------------------------//
+// Implementations                       //
+//---------------------------------------//
 
 scalar_t& scalar_t::operator*=(const scalar_t& rhs)
 {
