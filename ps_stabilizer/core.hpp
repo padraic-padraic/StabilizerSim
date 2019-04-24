@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <complex>
 #include <iostream>
+#include <string>
 #include <vector>
 
 static const int RE_PHASE[8] = {1, 1, 0, -1, -1, -1, 0, 1};
@@ -162,6 +163,46 @@ struct pauli_t {
   {
     return (X|Z);
   };
+
+  std::string to_string(unsigned n_qubits)
+  {
+    std::string out = "";
+    switch(e)
+    {
+      case 0:
+        out += "1";
+        break;
+      case 1:
+        out += "i";
+        break;
+      case 2:
+        out += "-1";
+        break;
+      case 3:
+        out += "-i";
+        break;
+    }
+    for(unsigned i=0; i<n_qubits; i++)
+    {
+      unsigned pauli = !!(X & (one << i)) * 2 + !!(Z&(one << i))*1;
+      switch(pauli)
+      {
+        case 0:
+          out += "I";
+          break;
+        case 1:
+          out += "Z";
+          break;
+        case 2:
+          out += "X";
+          break;
+        case 3:
+          out += "Y";
+          break;
+      }
+    }
+    return out;
+  }
 
 };
 
