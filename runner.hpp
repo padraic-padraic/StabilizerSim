@@ -2,10 +2,11 @@
 #define RUNNER_HPP
 
 #include "core.hpp"
-#include "norm_estimation.hpp"
+// #include "norm_estimation.hpp"
 #include "rng.hpp"
 
 #include <ctime>
+#include <cstdlib>
 #include <vector>
 
 #ifdef _OPENMP
@@ -20,18 +21,20 @@
 namespace StabilizerSimulator
 {
 
+template <class stabilizer_t>
 struct DecompositionBuilder
 {
-  DecompositionBuilder();
+  DecompositionBuilder() = default;
   virtual ~DecompositionBuilder() = default;
 
-  virtual void operator()(unsigned rank) = 0;
+  virtual complex_t operator()(stabilizer_t &s) = 0;
+
 };
 
 template <class stabilizer_t> class Runner
 {
 public:
-  Runner();
+  Runner() = default;
   Runner(unsigned n_qubits_, unsigned n_states_) :
   n_states(n_states_), n_qubits(n_qubits_),
   states(n_states_, stabilizer_t(n_qubits_)),
@@ -39,13 +42,11 @@ public:
   {};
   ~Runner() = default;
 
-  friend DecompositionBuilder;
+  void initialize(unsigned n_qubits_, unsigned n_states_, stabilizer_t& initial_state, int seed=-1);
 
-  void initialize(unsigned n_qubits_, unsigned n_states_, stabilizer_t& initial_state);
-
-  void build_decomposition(DecompositionBuilder& db_func);
-  uint_t monte_carlo_sampler(unsigned mixing_time=7000);
-  std::vector<uint_t> monte_carlo_sampler(unsigned n_shots=3000, unsigned mixing_time=7000);
+  void build_decomposition(DecompositionBuilder<stabilizer_t>& db_func);
+  uint_t monte_carlo_sampler(unsigned mixing_time);
+  std::vector<uint_t> monte_carlo_sampler(unsigned n_shots, unsigned mixing_time);
   double norm_estimation(unsigned n_samples=50);
   // double norm_estimation(ProbabilityFunc& p_func, std::vector<pauli_t>& generators, unsigned n_samples=50);
 
@@ -65,22 +66,31 @@ private:
 };
 
 template <class stabilizer_t>
-void Runner<stabilizer_t>::initialize(unsigned n_qubits_, unsigned n_states_, stabilizer_t& initial_state)
+void Runner<stabilizer_t>::initialize(unsigned n_qubits_, unsigned n_states_, stabilizer_t& initial_state, int seed)
 {
   states.clear();
   coefficients.clear();
   states.reserve(n_states_);
   coefficients.reserve(n_states_);
   n_qubits = n_qubits_;
+  n_states = n_states_;
   complex_t initial_coeff(1., 0.);
-  unsigned seed = std::time(nullptr);
+  unsigned rng_seed;
+  if (seed < 0)
+  {
+    rng_seed = std::time(nullptr);
+  }
+  else
+  {
+    rng_seed = seed;
+  }
   #ifdef _OPENMP
-    #pragma parallel
-    {
-      init_rng(seed, omp_get_thread_num());
-    }
+  #pragma omp parallel
+  {
+    init_rng(rng_seed, omp_get_thread_num());
+  }
   #else
-    init_rng(seed, 0);
+  init_rng(rng_seed, 0);
   #endif
   for(unsigned i=0; i<n_states_; i++)
   {
@@ -90,12 +100,12 @@ void Runner<stabilizer_t>::initialize(unsigned n_qubits_, unsigned n_states_, st
 }
 
 template <class stabilizer_t>
-void Runner<stabilizer_t>::build_decomposition(DecompositionBuilder& db_func)
+void Runner<stabilizer_t>::build_decomposition(DecompositionBuilder<stabilizer_t>& db_func)
 {
   #pragma omp parallel for
   for(unsigned i=0; i<n_states; i++)
   {
-    db_func(i);
+    coefficients[i] = db_func(states[i]);
   }
 }
 
@@ -173,8 +183,8 @@ void Runner<stabilizer_t>::metropolis_step()
   }
   else
   {
-    double rand = random_double();
-    if (rand < p_threshold)
+    double r = random_double();
+    if (r < p_threshold)
     {
       accept = 1;
       old_ampsum = ampsum;
@@ -204,7 +214,7 @@ std::vector<uint_t> Runner<stabilizer_t>::monte_carlo_sampler(unsigned n_shots, 
   std::vector<uint_t> shots;
   shots.reserve(n_shots);
   shots.push_back(monte_carlo_sampler(mixing_time));
-  for(unsigned i=1; i<n_shots; i++)
+  for(unsigned i=0; i<n_shots; i++)
   {
     metropolis_step();
     shots.push_back(x_string);

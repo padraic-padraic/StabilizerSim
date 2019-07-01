@@ -23,6 +23,9 @@ See <http://creativecommons.org/publicdomain/zero/1.0/>. */
    rather suggest to use a xoroshiro128+ (for moderately parallel
    computations) or xorshift1024* (for massively parallel computations)
    generator. */
+namespace StabilizerSimulator
+{
+
 thread_local static uint64_t sm_x; /* The state can be seeded with any value. */
 
 uint64_t sm_next() {
@@ -92,5 +95,5 @@ uint64_t random_uint()
 {
   return xoro_next();
 }
-
+}
 #endif

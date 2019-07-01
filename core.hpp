@@ -45,7 +45,7 @@ extern const uint_t one = 1U;
   #define INTRINSIC_PARITY 1
   inline bool _gcc_parity(uint_t x)
   {
-    return (__builtin_popcountll(x) & one);
+    return __builtin_parityll(x);
   }
   bool (*hamming_parity) (uint_t) = &_gcc_parity;
   inline unsigned _gcc_weight(uint_t x)
@@ -59,7 +59,7 @@ extern const uint_t one = 1U;
   #define INTRINSIC_PARITY 1
     inline bool _clang_parity(uint_t x)
     {
-      return (__builtin_popcountll(x) & one);
+      return __builtin_parityll(x);
     }
     bool (*hamming_parity) (uint_t) = &_clang_parity;
     inline unsigned _clang_weight(uint_t x)
@@ -128,7 +128,15 @@ struct scalar_t {
     {
       return complex_t(0., 0.);
     }
-    complex_t mag(std::pow(2, p/(double)2), 0.);
+    complex_t mag;
+    if (e%2)
+    {
+      mag = complex_t(std::pow(2, (p-1)/(double)2), 0.);
+    }
+    else
+    {
+      mag = complex_t(std::pow(2, p/(double)2), 0.);
+    }
     complex_t phase(RE_PHASE[e], IM_PHASE[e]);
     return mag*phase;
   }

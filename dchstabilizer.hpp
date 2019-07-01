@@ -66,7 +66,11 @@ public:
                               // where P is an arbitrary Pauli operator
   void MeasurePauliProjector(std::vector<pauli_t>& generators);
 
-  scalar_t InnerProduct(DCHState& other);
+  scalar_t InnerProduct(uint_t &A_diag1, uint_t &A_diag2, std::vector<uint_t> &A);
+  // scalar_t InnerProduct(DCHState& other);
+
+  scalar_t ProposeFlip(unsigned flip_pos);
+  inline void AcceptFlip(){P=Q;}
 
   template<class T> friend double NormEstimate(std::vector<T>& states,
           const std::vector< std::complex<double> >& phases, 
@@ -97,17 +101,17 @@ private:
   uint_t M_diag2;
   std::vector<uint_t> M;// CZ part of the phase matrix M
   scalar_t omega; //Internal phase: |phi> = omega*U_{d}*U_{c}*U_{h}|s>
-
   std::vector<uint_t> GT;
   bool isReadyGT;
   void TransposeG();
+  pauli_t P;
+  pauli_t Q;
   //Commute a Pauli through the D, C and H layers
   void CommutePauliDC(pauli_t &P);
   void CommutePauli(pauli_t &P);
   //Update used for Hadamards and Measurement
   void UpdateSVector(uint_t t, uint_t u, unsigned b);
 
-  scalar_t InnerProduct(uint_t &A_diag1, uint_t &A_diag2, std::vector<uint_t> &A);
 };
 
 //-------------------------------//
@@ -376,6 +380,29 @@ void DCHState::MeasurePauliProjector(std::vector<pauli_t>& generators)
           break;
       }
   }
+}
+
+scalar_t DCHState::ProposeFlip(unsigned flip_pos)
+{
+  Q.e=0;
+  Q.X=0ULL;
+  Q.X ^= (1ULL << flip_pos);
+  Q.Z=0ULL;
+  CommutePauliDC(Q);
+  scalar_t amp;
+  amp.e = (2*Q.e);
+  if (!!((Q.X ^ s) & ~v))
+  {
+    amp.eps = 0;
+    return amp;
+  }
+  if (hamming_parity(Q.X&s&v))
+  {
+    amp.e += 4;
+    amp.e = (amp.e%8);
+  }
+  amp *= omega;
+  return amp;
 }
 
 //----------------------------------//
@@ -717,7 +744,7 @@ scalar_t DCHState::InnerProduct(uint_t &A_diag1, uint_t &A_diag2, std::vector<ui
     // Compute B:= G*((M-A)G^{T})
     for(unsigned i=0; i<n; i++)
     {
-      uint_t G_row = GT[i]; //(M-A) is symmetric so grab a column
+      uint_t G_row = GT[i];
       uint_t shift = (one << i);
       for(unsigned j=0; j<n; j++)
       {
@@ -787,125 +814,125 @@ scalar_t DCHState::InnerProduct(uint_t &A_diag1, uint_t &A_diag2, std::vector<ui
     return amp;
 }
 
-scalar_t DCHState::InnerProduct(DCHState& other)
-{
-  //Compute the inner product between two DCH states
-  // <phi_1|phi_2> = <s_1|H_1 C^{-1}_1 D^{-1}_1 D_2 C_2 H_2 |s_2>
-  // Set J = D^{-1}_1D_2
-  // Let J' = C^{-1}_1 J C_1
-  // Set G = C^{-1} C_2
-  // Rearrange <s_1| H_1 J' G H_2 |s_2>
-  // Define |ip> = J' G H_2 |s_2>
-  // Apply H_1 to |ip>
-  // Compute <s_2 | ip' > and return
-  if(this->n != other.n)
-  {
-    throw std::runtime_error("Cannot perform the inner product between states with "
-                             "different numbers of qubits.");
-  }
-  DCHState *left, *right;
-  if(hamming_weight(other.v) <= hamming_weight(this->v))
-  {
-    left = &other;
-    right = this;
-  }
-  else
-  {
-    left = this;
-    right = &other;
-  }
-  DCHState ip_state(right->n);
-  ip_state.v = right->v;
-  ip_state.s = right->s;
-  ip_state.omega = right->omega;
-  if(!(left->isReadyGT))
-  {
-    left->TransposeG();
-  }
-  //Compute the combined phase matrix
-  uint_t diag_1 = (right->M_diag1 ^ left->M_diag1);
-  uint_t diag_2 = (left->M_diag2 ^ left->M_diag1) ^ right->M_diag2 ^ (right->M_diag1 & left->M_diag1);
-  std::vector<uint_t> placeholder(n, zer);
-  std::vector<uint_t> J(n, zer);
-  for(unsigned i=0; i<n; i++)
-  {
-    J[i] = (left->M[i] ^ right->M[i]);
-    uint_t shift = (one << i);
-    if(!!(diag_1 & shift))
-    {
-      J[i] ^= shift;
-    }
-  }
-  //Commute the left CNOT matrix past the phase block
-  for(unsigned i=0; i<n; i++)
-  {
-    uint_t J_row = J[i]; //(M-A) is symmetric so grab a column
-    uint_t shift = (one << i);
-    for(unsigned j=0; j<n; j++)
-    {
-      unsigned weight = hamming_weight(J_row&left->GT[j]);
-      placeholder[j] ^= ((weight & 1U) * shift);
-    }
-  }
-  // Compute B:= G*((M-A)G^{T})
-  for(unsigned i=0; i<n; i++)
-  {
-    uint_t G_row = left->GT[i]; //(M-A) is symmetric so grab a column
-    uint_t shift = (one << i);
-    for(unsigned j=0; j<n; j++)
-    {
-      bool parity = hamming_parity(G_row&placeholder[j]);
-      ip_state.M[j] ^= (parity * shift);
-    }
-    //Make sure the M matrix has zero diagonal...
-    ip_state.M[i] &= ~(shift);
-    for(unsigned k=0; k<n; k++)
-    {
-      if((left->G[k]>>i)&one)
-      {
-        uint_t one_bit = (diag_1 >> k) & one;
-        if ((ip_state.M_diag1 >> i) & one_bit)
-        {
-            ip_state.M_diag2 ^= shift;
-        }
-        ip_state.M_diag1 ^= one_bit * shift;
-        ip_state.M_diag2 ^= ((diag_2 >> k) & one) * shift;
-        for (size_t l=k+1; l<n; l++)
-        {
-          if ((J[l] >> k) & (left->G[l] >> i) & one)
-          {
-              ip_state.M_diag2 ^= shift;
-          }
-        }
-      }
-    }
-  }
-  //Compute the combined G matrix
-  for(unsigned i=0; i<n; i++)
-  {
-    uint_t shift = (one << i);
-    for(unsigned j=0; j<n; j++)
-    {
-      ip_state.G[j] ^= hamming_parity(right->GT[i]&left->G_inverse[j])*shift;
-      ip_state.G_inverse[j] ^= hamming_parity(left->GT[i]&right->G_inverse[j])*shift;
-    }
-  }
-  // Commute Hadamards through to the IP state
-  for(unsigned i=0; i<n; i++)
-  {
-    if((left->v>> i) & one)
-    {
-      ip_state.H(i);
-    }
-  }
-  // Get the right global phase for the left hand state
-  scalar_t left_amp(left->omega);
-  left_amp.conjugate();
-  // Calculate the amplitude, correct and return.
-  scalar_t amp = ip_state.Amplitude(left->s);
-  amp *= left_amp;
-  return amp;
-}
+// scalar_t DCHState::InnerProduct(DCHState& other)
+// {
+//   //Compute the inner product between two DCH states
+//   // <phi_1|phi_2> = <s_1|H_1 C^{-1}_1 D^{-1}_1 D_2 C_2 H_2 |s_2>
+//   // Set J = D^{-1}_1D_2
+//   // Let J' = C^{-1}_1 J C_1
+//   // Set G = C^{-1} C_2
+//   // Rearrange <s_1| H_1 J' G H_2 |s_2>
+//   // Define |ip> = J' G H_2 |s_2>
+//   // Apply H_1 to |ip>
+//   // Compute <s_2 | ip' > and return
+//   if(this->n != other.n)
+//   {
+//     throw std::runtime_error("Cannot perform the inner product between states with "
+//                              "different numbers of qubits.");
+//   }
+//   DCHState *left, *right;
+//   if(hamming_weight(other.v) <= hamming_weight(this->v))
+//   {
+//     left = &other;
+//     right = this;
+//   }
+//   else
+//   {
+//     left = this;
+//     right = &other;
+//   }
+//   DCHState ip_state(right->n);
+//   ip_state.v = right->v;
+//   ip_state.s = right->s;
+//   ip_state.omega = right->omega;
+//   if(!(left->isReadyGT))
+//   {
+//     left->TransposeG();
+//   }
+//   //Compute the combined phase matrix
+//   uint_t diag_1 = (right->M_diag1 ^ left->M_diag1);
+//   uint_t diag_2 = (left->M_diag2 ^ left->M_diag1) ^ right->M_diag2 ^ (right->M_diag1 & left->M_diag1);
+//   std::vector<uint_t> placeholder(n, zer);
+//   std::vector<uint_t> J(n, zer);
+//   for(unsigned i=0; i<n; i++)
+//   {
+//     J[i] = (left->M[i] ^ right->M[i]);
+//     uint_t shift = (one << i);
+//     if(!!(diag_1 & shift))
+//     {
+//       J[i] ^= shift;
+//     }
+//   }
+//   //Commute the left CNOT matrix past the phase block
+//   for(unsigned i=0; i<n; i++)
+//   {
+//     uint_t J_row = J[i]; //(M-A) is symmetric so grab a column
+//     uint_t shift = (one << i);
+//     for(unsigned j=0; j<n; j++)
+//     {
+//       unsigned weight = hamming_weight(J_row&left->GT[j]);
+//       placeholder[j] ^= ((weight & 1U) * shift);
+//     }
+//   }
+//   // Compute B:= G*((M-A)G^{T})
+//   for(unsigned i=0; i<n; i++)
+//   {
+//     uint_t G_row = left->GT[i]; //(M-A) is symmetric so grab a column
+//     uint_t shift = (one << i);
+//     for(unsigned j=0; j<n; j++)
+//     {
+//       bool parity = hamming_parity(G_row&placeholder[j]);
+//       ip_state.M[j] ^= (parity * shift);
+//     }
+//     //Make sure the M matrix has zero diagonal...
+//     ip_state.M[i] &= ~(shift);
+//     for(unsigned k=0; k<n; k++)
+//     {
+//       if((left->G[k]>>i)&one)
+//       {
+//         uint_t one_bit = (diag_1 >> k) & one;
+//         if ((ip_state.M_diag1 >> i) & one_bit)
+//         {
+//             ip_state.M_diag2 ^= shift;
+//         }
+//         ip_state.M_diag1 ^= one_bit * shift;
+//         ip_state.M_diag2 ^= ((diag_2 >> k) & one) * shift;
+//         for (size_t l=k+1; l<n; l++)
+//         {
+//           if ((J[l] >> k) & (left->G[l] >> i) & one)
+//           {
+//               ip_state.M_diag2 ^= shift;
+//           }
+//         }
+//       }
+//     }
+//   }
+//   //Compute the combined G matrix
+//   for(unsigned i=0; i<n; i++)
+//   {
+//     uint_t shift = (one << i);
+//     for(unsigned j=0; j<n; j++)
+//     {
+//       ip_state.G[j] ^= hamming_parity(right->GT[i]&left->G_inverse[j])*shift;
+//       ip_state.G_inverse[j] ^= hamming_parity(left->GT[i]&right->G_inverse[j])*shift;
+//     }
+//   }
+//   // Commute Hadamards through to the IP state
+//   for(unsigned i=0; i<n; i++)
+//   {
+//     if((left->v>> i) & one)
+//     {
+//       ip_state.H(i);
+//     }
+//   }
+//   // Get the right global phase for the left hand state
+//   scalar_t left_amp(left->omega);
+//   left_amp.conjugate();
+//   // Calculate the amplitude, correct and return.
+//   scalar_t amp = ip_state.Amplitude(left->s);
+//   amp *= left_amp;
+//   return amp;
+// }
 
 }
 #endif

@@ -18,7 +18,7 @@ template<class T> double NormEstimate(std::vector<T>& states, const std::vector<
   #ifdef _OPENMP
   n_threads = omp_get_max_threads();
   #endif
-  NormEstimate(states, phases, Samples_d1, Samples_d2, Samples, n_threads);
+  return NormEstimate(states, phases, Samples_d1, Samples_d2, Samples, n_threads);
 }
 
 template<class T> double NormEstimate(std::vector<T>& states, const std::vector< std::complex<double> >& phases, 

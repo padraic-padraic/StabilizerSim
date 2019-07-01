@@ -7,6 +7,10 @@
 
 #include "mpi.h"
 
+#ifdef _OPENMP
+#inclide "omp.h"
+#endif
+
 namespace StabilizerSimulator
 {
 
@@ -98,7 +102,16 @@ void MPIRunner<stabilizer_t>::initialize(unsigned n_qubits_, unsigned n_states_,
   total_states = n_states_;
   unsigned seed = std::time(nullptr);
   MPI_Bcast(&seed, 1, MPI_UNSIGNED, 0, comm);
+  #ifdef _OPENMP
+  unsigned n_threads = omp_get_num_threads();
+  #pragma omp parallel
+  {
+    unsigned thread_num = omp_get_thread_num();
+    init_rng(seed, my_rank*n_threads + thread_num);
+  }
+  #else
   init_rng(seed, my_rank);
+  #endif
   if (my_rank==0) //Divive up the states
   {
     int task_divider = n_procs;
@@ -128,6 +141,7 @@ void MPIRunner<stabilizer_t>::initialize(unsigned n_qubits_, unsigned n_states_,
   BaseRunner::coefficients.clear();
   BaseRunner::states.reserve(BaseRunner::n_states);
   BaseRunner::coefficients.reserve(BaseRunner::n_states);
+  #pragma omp parallel for
   for(unsigned i=0; i<BaseRunner::n_states; i++)
   {
     BaseRunner::states.push_back(initial_state);
