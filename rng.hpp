@@ -26,7 +26,7 @@ See <http://creativecommons.org/publicdomain/zero/1.0/>. */
 namespace StabilizerSimulator
 {
 
-thread_local static uint64_t sm_x; /* The state can be seeded with any value. */
+thread_local uint64_t sm_x; /* The state can be seeded with any value. */
 
 uint64_t sm_next() {
   uint64_t z = (sm_x += 0x9e3779b97f4a7c15);
@@ -48,7 +48,7 @@ static inline uint64_t xoro_rotl(const uint64_t x, int k) {
     return (x << k) | (x >> (64 - k));
 }
 
-thread_local static uint64_t xoro_s[4];
+thread_local uint64_t xoro_s[4];
 
 uint64_t xoro_next(void) {
     const uint64_t result_starstar = xoro_rotl(xoro_s[1] * 5, 7) * 9;
